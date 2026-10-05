@@ -262,6 +262,28 @@ namespace RimDelegation
             p.needs.mood.thoughts.memories.TryGainMemory(thought, null, null);
         }
 
+        /// <summary>给一个人挂某条心情记忆的**第 stage 级**（RIM-5：满意度按档位挂；野外伙食本来就这么挂）。</summary>
+        public static void GrantThought(Pawn p, ThoughtDef thought, int stage)
+        {
+            if (p == null || thought == null || p.needs?.mood?.thoughts?.memories == null || p.Dead)
+            {
+                return;
+            }
+            try
+            {
+                Thought_Memory memory = ThoughtMaker.MakeThought(thought, stage);
+                if (memory != null)
+                {
+                    p.needs.mood.thoughts.memories.TryGainMemory(memory);
+                }
+            }
+            catch (Exception ex)
+            {
+                // 心情挂载在每 tick 的路径上，异常绝不能让整局崩掉（与野外伙食同款兜底）
+                Log.WarningOnce("[RimDelegation] 挂载带档位的心情记忆失败：" + ex, 0x5E0DC);
+            }
+        }
+
         /// <summary>某条 ThoughtDef 的心情影响（取第一阶段），用于 UI 显示。</summary>
         public static float MoodEffectOf(ThoughtDef thought)
         {
@@ -272,10 +294,37 @@ namespace RimDelegation
             return thought.stages[0].baseMoodEffect;
         }
 
-        /// <summary>委派期间"每天"的心情合计（def 基础 + 模式额外）。</summary>
+        /// <summary>
+        /// 委派期间"每天"的心情合计。
+        ///
+        /// RIM-5 起口径换成**满意度**（用户拍板 1A / 2B / 6A）：作业模式不再直接挂心情，
+        /// 它的 +3 / 0 / −4 / −6 变成满意度来源「作业强度」，心情由满意度的档位记忆产出。
+        ///
+        /// 这个重载给**还没有 <see cref="Delegation" /> 实例**的场合（草稿 / 前往中计划）用：
+        /// 吃喝与远行时间在那一刻还不知道，按中性 0.5 算 ⇒ 它是"预计值"。
+        /// 在途详情请用 <see cref="DailyMoodOffset(Delegation)" />。
+        /// </summary>
         public static float DailyMoodOffset(DelegationDef def, DelegationModeDef mode)
         {
-            return MoodEffectOf(def?.dailyMoodThought) + MoodEffectOf(mode?.dailyMoodThought);
+            return MoodEffectOf(def?.dailyMoodThought)
+                + DelegationSatisfaction.Mood(DelegationSatisfaction.EstimatedValue(mode, 0f));
+        }
+
+        /// <summary>在途委派的"每天"心情：用**真实**满意度（含吃饭记录与远行时间）。</summary>
+        public static float DailyMoodOffset(Delegation d)
+        {
+            if (d == null)
+            {
+                return 0f;
+            }
+            return MoodEffectOf(d.def?.dailyMoodThought) + DelegationSatisfaction.Mood(d.satisfaction);
+        }
+
+        /// <summary>「前往中」计划的预计每天心情：远行时间那一项按"已经/预计在外几天"算。</summary>
+        public static float DailyMoodOffsetForPlan(DelegationDef def, DelegationModeDef mode, float daysAway)
+        {
+            return MoodEffectOf(def?.dailyMoodThought)
+                + DelegationSatisfaction.Mood(DelegationSatisfaction.EstimatedValue(mode, daysAway));
         }
 
         // ── 疲劳 → 工伤（§19.25）────────────────────────────────────────────
@@ -404,6 +453,9 @@ namespace RimDelegation
         ///
         /// 阶段心情为 0 时**不挂**：0 心情的记忆不会出现在需求列表里（会被 `MoodOffset() != 0f` 过滤掉），
         /// 挂了只是白占内存。
+        ///
+        /// RIM-5：**无论这顿值多少心情，都先记进委派的那份「最近一段时间的吃喝」**——
+        /// 「凑合一顿」也是一条信息，不记的话均值会偏向极端。
         /// </summary>
         public static void GrantFieldMeal(Thing food, Pawn ingester)
         {
@@ -415,7 +467,11 @@ namespace RimDelegation
             {
                 return;
             }
-            if (DelegationRegistry.AnyActiveFor(ingester) == null)
+            // ⚠️ `AnyActiveFor` 返回的是**宿主组件**（WorldObjectComp_Delegations），不是 Delegation ——
+            //    要记吃饭记录得从它身上取 `active`。
+            WorldObjectComp_Delegations host = DelegationRegistry.AnyActiveFor(ingester);
+            Delegation del = host?.active;
+            if (del == null)
             {
                 return;
             }
@@ -426,6 +482,7 @@ namespace RimDelegation
             }
 
             int stage = cfg.StageFor(food.def);
+            del.RecordMeal(stage);      // RIM-5：满意度来源①（窗口内的吃饭序列）
             if (cfg.MoodOfStage(stage) == 0f)
             {
                 return;

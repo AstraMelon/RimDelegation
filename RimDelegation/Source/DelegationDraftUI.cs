@@ -238,12 +238,19 @@ namespace RimDelegation
             List<SummaryLine> lines = new List<SummaryLine>();
             List<Pawn> chosen = draft.ChosenList();
 
+            // RIM-5：草稿阶段还没有 Delegation 实例 —— 吃喝与远行时间未知，按"预计满意度"估作业速率，
+            // 好让"预计 X 天完"这个数字把满意度那一层也算进去（与实际开工后的口径不会差太多）。
+            float estimatedRate = DelegationSatisfaction.RateFactor(
+                DelegationSatisfaction.EstimatedValue(draft.mode, 0f));
             float perDay = draft.mode == null ? 0f : worker.EstimateUnitsPerDayFor(chosen, draft.mode,
-                draft.site.Tile, draft.site);
+                draft.site.Tile, draft.site, estimatedRate);
             float mood = DelegationUtility.DailyMoodOffset(draft.def, draft.mode);
             string moodLine = DelegationUIUtility.MoodLine(mood);
             Add(lines, string.Format("已选 {0} 人 · 结束条件：{1} · {2}",
                 chosen.Count, draft.EndConditionLabel(), moodLine), width);
+
+            // RIM-5：满意度是这一趟"心情 + 效率"的唯一来源，草稿里必须摊开（口径标"预计"）
+            Add(lines, DelegationUIUtility.SatisfactionLineEstimated(draft.mode, 0f), width);
 
             if (perDay > 0f)
             {

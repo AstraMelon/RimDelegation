@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -45,7 +46,7 @@ namespace RimDelegation
             }
 
             Log.Message(string.Format(
-                "[RimDelegation] 已加载 | Harmony {0} | 已打补丁方法 {1} 个 | DelegationDef {2} 个 | DelegationModeDef {3} 个 | DelegationEventDef {4} 个 | DelegationFoodMoodDef {5} 个 | DelegationPhaseDef {6} 个 | WorldObjectDef {7} 个 | 主控台画法 {8}",
+                "[RimDelegation] 已加载 | Harmony {0} | 已打补丁方法 {1} 个 | DelegationDef {2} 个 | DelegationModeDef {3} 个 | DelegationEventDef {4} 个 | DelegationFoodMoodDef {5} 个 | DelegationPhaseDef {6} 个 | DelegationSatisfactionDef {7} 个 | WorldObjectDef {8} 个 | 主控台画法 {9}",
                 typeof(Harmony).Assembly.GetName().Version,
                 harmony.GetPatchedMethods().Count(),
                 DefDatabase<DelegationDef>.DefCount,
@@ -53,6 +54,7 @@ namespace RimDelegation
                 DefDatabase<DelegationEventDef>.DefCount,
                 DefDatabase<DelegationFoodMoodDef>.DefCount,
                 DefDatabase<DelegationPhaseDef>.DefCount,
+                DefDatabase<DelegationSatisfactionDef>.DefCount,
                 DefDatabase<WorldObjectDef>.DefCount,
                 skinOk ? "Radius UI 皮肤" : "原版（皮肤不可用）"));
 
@@ -67,6 +69,8 @@ namespace RimDelegation
             {
                 Log.Warning("[RimDelegation] 没有加载到任何 DelegationFoodMoodDef —— 野外伙食不会生效，请检查 Defs/RimDelegation_FoodMood.xml");
             }
+            // RIM-5：满意度 Def / 记忆 Def 缺失的症状是"心情与效率都恒为中性"（机制整体静默失效）。
+            CheckSatisfaction();
 
             CheckSiteComps();
             CheckOvertimeAndFlow();
@@ -265,6 +269,56 @@ namespace RimDelegation
                 {
                     Log.Error("[RimDelegation] DelegationDef「" + def.defName + "」配置了 flowPhases，但一条 DelegationPhaseDef 都没加载到" +
                               " —— 固定流程会被整体跳过。请检查 Defs/RimDelegation_Delegations.xml");
+                }
+            }
+        }
+
+        /// <summary>
+        /// 启动自检（RIM-5）：满意度的**静默失效**与**废弃字段仍在被用**。
+        ///
+        ///   ① 没有 `DelegationSatisfactionDef` ⇒ 满意度恒为中性（每天心情 0、速率 ×1）——
+        ///      玩家会以为"这机制没做"，其实只是 XML 没加载；
+        ///   ② 有 Def 但没配 `thought` ⇒ 效率那一半还在，**每日心情那一半静默消失**；
+        ///   ③ 某个 `DelegationModeDef` 还在写 `workRateMultiplier`（≠1）或 `dailyMoodThought` ⇒
+        ///      那两个字段自 RIM-5 起**不再被读取**（多半是第三方 patch 或旧 XML 没跟上），
+        ///      不喊一声就是"改了没效果"的经典静默失败。
+        /// </summary>
+        private static void CheckSatisfaction()
+        {
+            if (DefDatabase<DelegationSatisfactionDef>.DefCount == 0)
+            {
+                Log.Warning("[RimDelegation] 没有加载到任何 DelegationSatisfactionDef —— " +
+                            "满意度会恒为中性（每天心情 0、作业速率 ×1）。请检查 Defs/RimDelegation_Satisfaction.xml");
+            }
+            else if (DelegationSatisfaction.Def?.thought == null)
+            {
+                Log.Warning("[RimDelegation] DelegationSatisfactionDef 没有配 thought（每日心情记忆）—— " +
+                            "满意度只会影响作业速率，**每天心情那一半不会生效**。请检查 Defs/RimDelegation_Satisfaction.xml");
+            }
+
+            List<DelegationModeDef> modes = DefDatabase<DelegationModeDef>.AllDefsListForReading;
+            if (modes == null)
+            {
+                return;
+            }
+            for (int i = 0; i < modes.Count; i++)
+            {
+                DelegationModeDef mode = modes[i];
+                if (mode == null)
+                {
+                    continue;
+                }
+                if (Math.Abs(mode.workRateMultiplier - 1f) > 0.0001f)
+                {
+                    Log.Warning("[RimDelegation] DelegationModeDef「" + mode.defName + "」还在写 workRateMultiplier=" +
+                                mode.workRateMultiplier + "，但 RIM-5 起**这个字段不再被读取**" +
+                                "（效率改由满意度给）—— 那条 patch 不会生效。请改用 workIntensity / 满意度设置。");
+                }
+                if (mode.dailyMoodThought != null)
+                {
+                    Log.Warning("[RimDelegation] DelegationModeDef「" + mode.defName + "」还在写 dailyMoodThought=" +
+                                mode.dailyMoodThought.defName + "，但 RIM-5 起**模式不再直接挂心情**" +
+                                "（折算成满意度来源「作业强度」）—— 那条 patch 不会生效。请改用 workIntensity。");
                 }
             }
         }

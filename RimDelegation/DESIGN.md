@@ -3610,6 +3610,10 @@ MTB 合计随之下降（3 人队 ≈ 0.71 次/天）。这是刻意的取舍 �
 
 ### 19.25 委派模式重新定价 · 疲劳 → 工伤 · 野外伙食 `[验证]`
 
+> ⚠️ **19.25.2（四个模式的速率 / 心情定价）已被 RIM-5 取代**（2026-10-05，见 §S37）：
+> 模式不再提供效率、也不再直接挂心情；下面的表**只保留作历史定价推导**，现行数值以 §19.109 为准。
+> 19.25.3（疲劳 → 工伤）与 19.25.4（野外伙食）**仍然有效**。
+
 这一节是"四个工作模式该怎么定价"的结论，以及为它补上的两个机制。
 
 #### 19.25.1 定价基准：心情从 32% 起步，不是 50% `[验证]`
@@ -3630,7 +3634,7 @@ MentalBreakThreshold 默认 0.35  ⇒  轻微 35% / 重度 20% / 极端 5%
 原来 Mining def 上那条"野外扎营干活 -3"会把正常工作压到 29%，是明确的定价错误，已摘掉
 （`RimDelegation_Thought_DelegationCamp` 保留定义只为让旧存档里的这条记忆还能解析）。
 
-#### 19.25.2 四个模式（最终数值）`[验证]`
+#### 19.25.2 四个模式（最终数值）`[验证]` —— ⚠️ RIM-5 起作废，见 §19.109
 
 | 模式 | 工时窗口 | 速率 | 日 h-eq | 心情 | 最低休息 | 倍率均值 | 等效 MTB |
 |---|---|---|---|---|---|---|---|
@@ -5801,4 +5805,92 @@ RimDelegation 与 RimDelegation - Radius UI 一直是**两个 mod**：本体出�
 3. RIM-7（三段标题发虚）、RIM-8（收集任务段取空后空白）**未做**，仍是 backlog。
 
 ---
+
+## S37 · RIM-5：作业模式剥离出独立「满意度」机制（2026-10-05）
+
+> **本条取代 §19.25.2 的模式定价**：模式不再给效率、也不再直接挂心情 —— 两样都由「满意度」产出。
+> §19.25.3（疲劳 → 工伤倍率）与 §19.25.4（野外伙食）**继续有效**，且分别成了满意度的"生理代价"邻居
+> 与「最近一段时间的吃喝」来源的数据源。
+
+### 19.108 用户需求与拍板 `[验证]`
+
+**用户原话（2026-10-05）**：「现状：作业模式会提供效率和心情的增益减益／修改：作业模式不提供这些效果影响，
+独立一套机制"满意度"出去，提供心情和效率增益减益，满意度来源：最近一段时间的吃喝，游戏难度，
+远行时间（受文化影响），要让玩家可配置」
+
+**议题 RIM-5 评论里的拍板**：
+
+| # | 问题 | 拍板 | 落地含义 |
+|---|---|---|---|
+| 1 | 效率边界 | **1A** | 只摘 `workRateMultiplier`；**工时窗口留在模式**（它是作息定义，干得久自然日产高） |
+| 2 | 模式那三条心情 | **2B** | 不删，折算成满意度来源「作业强度」（`workIntensity` = +3 / 0 / −4 / −6） |
+| 3 | 载体粒度 | **3A** | **每支委派一个值**（不做逐人值，避开新加入 / 离队 / 伤员三种分叉） |
+| 4 | 「远行时间」口径 | **4B → 修正为"远行队实际开始移动那一刻"** | `planDepartTickAbs`（`pather.MovingNow` 第一次为真）→ 开工交给 `Delegation.departTickAbs` |
+| 5 | 「文化」 | **5C → 修正为"远行时间照做、只是不接文化"** | 本轮做满四来源，文化只留后续挂点（mod 内零 DLC 判定） |
+| 6 | 心情兑现 | **6A** | 沿用 memory thought（每天挂一次、落地后兑现），不引 Hediff 路线 |
+| 7 | 可配置粒度 | **7A** | 四来源各自**开关 + 权重**，另加效率幅度 / 心情幅度 |
+| 8 | 数值落点 | **8A** | **双落点**：Def 给曲线与默认值，Mod 设置页是玩家实际生效值 |
+| 9 | 效率落点 | **9A** | 仍乘在原来那四处（采矿 / 搜刮 / 工作站点 / 营救），**不**做 `StatDef` 化 |
+
+### 19.109 数值公式（唯一收口 `Source/DelegationSatisfaction.cs`）`[验证]`
+
+子分（0..1，0.5 = 中性）：
+
+| 来源 | 公式 | 端点 |
+|---|---|---|
+| ① 最近一段时间的吃喝 | `clamp01((近 mealRecentDays 天每次吃饭的野外伙食心情均值 + 2) / 6)` | 干粮 −2 → 0；凑合 0 → 0.33；不错 +2 → 0.67；很好 +4 → 1；窗口内没吃 → 0.5 |
+| ② 游戏难度 | `clamp01((Find.Storyteller.difficulty.colonistMoodOffset + 10) / 20)` | 和平 +10 → 1；常规 0 → 0.5；冷酷 −10 → 0 |
+| ③ 远行时间 | `0.5 × (1 − clamp01((在外天数 − travelGraceDays) / travelFullPenaltyDays))` | 默认宽限 1 天、之后 9 天线性到 0 |
+| ④ 作业强度 | `clamp01(0.5 + mode.workIntensity / intensitySpan)` | +3 → 0.75；0 → 0.5；−4 → 0.17；−6 → 0 |
+
+```
+满意度   = Σ(开关 × 权重 × 子分) ÷ Σ(开关 × 权重)        // 权重可负；权重和为 0 或全关 ⇒ 0.5
+作业速率 = 1 + (满意度 − 0.5) × 2 × efficiencyRange        // 默认 0.15 ⇒ 满意度 0 → ×0.85、1 → ×1.15
+每日心情 = 记忆 Def 第 clamp(floor(满意度 × 5), 0, 4) 档 baseMoodEffect × moodScale
+           档位值 = −8 / −4 / 0 / +4 / +8（`RimDelegation_Thought_Satisfaction`，moodScale 默认 1）
+```
+
+⚠️ 两处**实测校正**（写代码时被编译器抓到，别再照文档表格写成整数）：
+`DifficultyDef.colonistMoodOffset` 是 **float**（不是 int）；
+`DelegationRegistry.AnyActiveFor(Pawn)` 返回的是**宿主组件** `WorldObjectComp_Delegations`，不是 `Delegation`。
+
+### 19.110 落点与不变量 `[验证]`
+
+* **新增** `Source/DelegationSatisfaction.cs`：`DelegationSatisfactionSource` / `DelegationSatisfactionSourceEntry` /
+  `DelegationSatisfactionDef` / `DelegationMealRecord`（进存档）+ 公式收口 `DelegationSatisfaction`。
+* **`DelegationModeDef`**：+`workIntensity`；`workRateMultiplier` 与 `dailyMoodThought` **标废弃但保留字段**
+  （第三方 patch 不报未知字段错误），`ModBoot.CheckSatisfaction()` 对"还在写它们"喊 Warning（禁静默失效）。
+* **`Delegation`**：+`departTickAbs` / `recentMeals` / `satisfaction`（三个新存档键 `roDepartTickAbs` /
+  `roRecentMeals` / `roSatisfaction`）+ `RefreshSatisfaction()` **每 tick 刷一次**（UI/worker 只读缓存）。
+* **心情仍是 memory thought**（用户拍板 6A）：`GrantDailyMood` 改挂满意度档位记忆；
+  **0 心情那一档不挂**（0 心情记忆会被 `MoodOffset() != 0f` 滤掉，挂了只是白占内存）。
+* **模式切换的语义变化**：满意度按新模式**立刻**重算（作业强度是输入），但**每日心情记忆要等下一次日结算**
+  —— 所以「换班不白拿心情」这条老不变量仍然成立（`ticksSinceMoodTick` 绝不重置）。
+* **可配置**：`RimDelegationSettings` +11 键 +设置页一整段（含公式说明与「恢复满意度默认值」）；
+  设置页是**档位按钮不是滑条**（本项目从未用过滑条 API，不猜），要更细的浮点直接改 `Config\ModSettings` 的键。
+* **原版三处 + 皮肤三处**文案统一走 `DelegationUIUtility.SatisfactionLine` / `SatisfactionLineEstimated`
+  （"唯一一份措辞"，与 ModeLine/MoodLine 同规矩）。
+
+### S37 验收步骤
+
+① 开局选**常规作业**：主控台/检视显示的"模式"行不再有 `速率 ×N`，改为 `作业强度 0` + 一行「满意度 …」；
+② 让车队在委派里吃**干粮**（或生食）几顿 ⇒ 「满意度」下降（档位词变差、效率系数 < ×1.00）；
+   换成**精致餐/奢华餐** ⇒ 回升（`durationDays 1` 的野外伙食记忆本身也在涨）；
+③ 把难度换成**冷酷无情**（`colonistMoodOffset = −10`）⇒ 难度子分 → 0，满意度整体下移；
+④ 让一趟委派在外待过 1 天（宽限）后继续 ⇒ 满意度随天数线性下降；同一次委派把模式切成**全天候** ⇒
+   满意度**立刻**再降（作业强度 −6），但**当天已挂的心情记忆不变**，要等次日结算才换档；
+⑤ Mod 设置里关掉「游戏难度」来源（或把权重切到 0）⇒ 难度不再影响满意度；
+   关掉总开关 ⇒ 满意度恒为中性（每天心情 0、作业速率 ×1）；
+⑥ `Player.log` 里应看到 `DelegationSatisfactionDef 1 个`；若有人把 `workRateMultiplier` 写回 XML，
+   启动时会有一条 Warning 点名它**不生效**。
+
+### 遗留（未拍板）
+
+1. **文化这一层没做**（用户拍板 5C）：满意度来源里没有 Ideology 修饰；将来要接，挂点候选是
+   `PreceptComp_*Thought` 系列 / `MemeDef`（`PreceptDef` **没有** `moodOffset` 字段 —— 实测 0 命中）。
+2. **效率仍是"4 处乘法"**（用户拍板 9A）：没有 `StatDef` 化的作业速率，所以"满意度 ×0.85"不会出现在
+   pawn 的信息卡里，只出现在委派 UI 与产出上。
+3. 权重设置页只有 5 档（0 / 0.5 / 1 / 1.5 / 2）：更细的浮点要手改配置文件。
+4. `DelegationUIUtility.MoodLine` 仍在被草稿页用作"每天心情"那一行（与满意度行并存），
+   要不要合并成一行，等一轮 UI 反馈再定。
 

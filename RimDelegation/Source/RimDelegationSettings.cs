@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using UnityEngine;
 using Verse;
 
 namespace RimDelegation
@@ -168,6 +169,36 @@ namespace RimDelegation
         /// </summary>
         public bool hoverFocus = true;
 
+        // ── RIM-5：满意度（心情 + 效率的唯一来源）──────────────────────────────
+        //
+        // 用户拍板 7A + 8A：**四个来源各自的开关 + 权重**，数值**双落点**——
+        //   · Def（`DelegationSatisfactionDef`）管曲线参数与默认值，见 DelegationSatisfaction.cs；
+        //   · 这一份是**玩家实际生效值**（本地 Mod 配置、不进存档），点「恢复满意度默认值」从 Def 重取。
+        //
+        // ⚠️ 设置页是**档位按钮**不是滑条（本项目从未用过滑条 API，不猜）：
+        //    想给更细的浮点就直接改 `Config\ModSettings\<模组>_<Mod类名>.xml`，Scribe 会原样读写。
+
+        /// <summary>满意度总开关。关掉 ⇒ 满意度恒为中性（心情 0、效率 ×1），机制整体停摆。</summary>
+        public bool satisfactionEnabled = true;
+
+        public bool satisfactionSourceMeals = true;
+        public float satisfactionWeightMeals = 1f;
+
+        public bool satisfactionSourceDifficulty = true;
+        public float satisfactionWeightDifficulty = 1f;
+
+        public bool satisfactionSourceTravelTime = true;
+        public float satisfactionWeightTravelTime = 1f;
+
+        public bool satisfactionSourceWorkIntensity = true;
+        public float satisfactionWeightWorkIntensity = 1f;
+
+        /// <summary>效率幅度：满意度 0 / 1 分别把作业速率乘到 1∓这个值（默认 0.15 ⇒ ×0.85 / ×1.15）。</summary>
+        public float satisfactionEfficiencyRange = 0.15f;
+
+        /// <summary>心情幅度：每日满意度记忆的心情值 × 这个系数（默认 1）。</summary>
+        public float satisfactionMoodScale = 1f;
+
         // ── 「委派」主控台窗口的几何（S8）───────────────────────────────────────
         // 窗口可拖拽可缩放，位置与尺寸存在这里，下次打开原样恢复。
         // 抄的是 Radius UI - Quest Menu 的做法：-1 = 还没记录过（用默认位置），
@@ -217,6 +248,18 @@ namespace RimDelegation
             Scribe_Values.Look(ref pinnedMain, "pinnedMain", false);
             Scribe_Values.Look(ref pinnedRail, "pinnedRail", false);
             Scribe_Values.Look(ref hoverFocus, "hoverFocus", true);
+            // RIM-5 满意度（键名与 Def 里的字段一一对应，便于手改配置）
+            Scribe_Values.Look(ref satisfactionEnabled, "satisfactionEnabled", true);
+            Scribe_Values.Look(ref satisfactionSourceMeals, "satisfactionSourceMeals", true);
+            Scribe_Values.Look(ref satisfactionWeightMeals, "satisfactionWeightMeals", 1f);
+            Scribe_Values.Look(ref satisfactionSourceDifficulty, "satisfactionSourceDifficulty", true);
+            Scribe_Values.Look(ref satisfactionWeightDifficulty, "satisfactionWeightDifficulty", 1f);
+            Scribe_Values.Look(ref satisfactionSourceTravelTime, "satisfactionSourceTravelTime", true);
+            Scribe_Values.Look(ref satisfactionWeightTravelTime, "satisfactionWeightTravelTime", 1f);
+            Scribe_Values.Look(ref satisfactionSourceWorkIntensity, "satisfactionSourceWorkIntensity", true);
+            Scribe_Values.Look(ref satisfactionWeightWorkIntensity, "satisfactionWeightWorkIntensity", 1f);
+            Scribe_Values.Look(ref satisfactionEfficiencyRange, "satisfactionEfficiencyRange", 0.15f);
+            Scribe_Values.Look(ref satisfactionMoodScale, "satisfactionMoodScale", 1f);
             if (pinnedSites == null)
             {
                 pinnedSites = new List<int>();
@@ -241,6 +284,113 @@ namespace RimDelegation
                 winH = 0f;
                 geomVersion = CurrentGeomVersion;
             }
+        }
+
+        // ── RIM-5 满意度：设置页用的取值 / 改值（一律走 switch，避免把字段名散在 UI 里）──────
+
+        /// <summary>玩家给这个来源开的开关。</summary>
+        public bool SourceEnabled(DelegationSatisfactionSource source)
+        {
+            switch (source)
+            {
+                case DelegationSatisfactionSource.Difficulty: return satisfactionSourceDifficulty;
+                case DelegationSatisfactionSource.TravelTime: return satisfactionSourceTravelTime;
+                case DelegationSatisfactionSource.WorkIntensity: return satisfactionSourceWorkIntensity;
+                default: return satisfactionSourceMeals;
+            }
+        }
+
+        public void SetSourceEnabled(DelegationSatisfactionSource source, bool value)
+        {
+            switch (source)
+            {
+                case DelegationSatisfactionSource.Difficulty: satisfactionSourceDifficulty = value; break;
+                case DelegationSatisfactionSource.TravelTime: satisfactionSourceTravelTime = value; break;
+                case DelegationSatisfactionSource.WorkIntensity: satisfactionSourceWorkIntensity = value; break;
+                default: satisfactionSourceMeals = value; break;
+            }
+        }
+
+        /// <summary>玩家给这个来源的权重（**允许负数**：负权重 = 这个来源越高、满意度越低）。</summary>
+        public float SourceWeight(DelegationSatisfactionSource source)
+        {
+            switch (source)
+            {
+                case DelegationSatisfactionSource.Difficulty: return satisfactionWeightDifficulty;
+                case DelegationSatisfactionSource.TravelTime: return satisfactionWeightTravelTime;
+                case DelegationSatisfactionSource.WorkIntensity: return satisfactionWeightWorkIntensity;
+                default: return satisfactionWeightMeals;
+            }
+        }
+
+        public void SetSourceWeight(DelegationSatisfactionSource source, float value)
+        {
+            switch (source)
+            {
+                case DelegationSatisfactionSource.Difficulty: satisfactionWeightDifficulty = value; break;
+                case DelegationSatisfactionSource.TravelTime: satisfactionWeightTravelTime = value; break;
+                case DelegationSatisfactionSource.WorkIntensity: satisfactionWeightWorkIntensity = value; break;
+                default: satisfactionWeightMeals = value; break;
+            }
+        }
+
+        /// <summary>权重档位（设置页按钮只能给档位，不是滑条）：0 → 0.5 → 1 → 1.5 → 2 → 0。</summary>
+        private static readonly float[] WeightSteps = { 0f, 0.5f, 1f, 1.5f, 2f };
+
+        public void CycleSourceWeight(DelegationSatisfactionSource source)
+        {
+            SetSourceWeight(source, NextStep(WeightSteps, SourceWeight(source), 2));
+        }
+
+        /// <summary>效率幅度档位：0 → 0.05 → 0.10 → 0.15 → 0.20 → 0.30 → 0。</summary>
+        private static readonly float[] RangeSteps = { 0f, 0.05f, 0.1f, 0.15f, 0.2f, 0.3f };
+
+        public void CycleEfficiencyRange()
+        {
+            satisfactionEfficiencyRange = NextStep(RangeSteps, satisfactionEfficiencyRange, 3);
+        }
+
+        /// <summary>心情幅度档位：0 → 0.5 → 1 → 1.5 → 2 → 0。</summary>
+        private static readonly float[] MoodScaleSteps = { 0f, 0.5f, 1f, 1.5f, 2f };
+
+        public void CycleMoodScale()
+        {
+            satisfactionMoodScale = NextStep(MoodScaleSteps, satisfactionMoodScale, 2);
+        }
+
+        /// <summary>在档位表里找下一个值；当前值不在表里（手改过配置）时落在 <paramref name="fallbackIndex" />。</summary>
+        private static float NextStep(float[] steps, float current, int fallbackIndex)
+        {
+            int idx = fallbackIndex;
+            for (int i = 0; i < steps.Length; i++)
+            {
+                if (Mathf.Abs(steps[i] - current) < 0.001f)
+                {
+                    idx = i;
+                    break;
+                }
+            }
+            return steps[(idx + 1) % steps.Length];
+        }
+
+        /// <summary>把满意度那十一个键恢复成 Def 里的默认值（设置页的「恢复满意度默认值」按钮）。</summary>
+        public void ResetSatisfactionToDefaults()
+        {
+            satisfactionEnabled = true;
+            DelegationSatisfactionDef def = DelegationSatisfaction.Def;
+            ResetSource(DelegationSatisfactionSource.Meals, def);
+            ResetSource(DelegationSatisfactionSource.Difficulty, def);
+            ResetSource(DelegationSatisfactionSource.TravelTime, def);
+            ResetSource(DelegationSatisfactionSource.WorkIntensity, def);
+            satisfactionEfficiencyRange = def?.efficiencyRange ?? 0.15f;
+            satisfactionMoodScale = def?.moodScale ?? 1f;
+        }
+
+        private void ResetSource(DelegationSatisfactionSource source, DelegationSatisfactionDef def)
+        {
+            DelegationSatisfactionSourceEntry e = def?.EntryFor(source);
+            SetSourceEnabled(source, e?.enabled ?? true);
+            SetSourceWeight(source, e?.weight ?? 1f);
         }
 
         private static float Scrub(float v, float fallback)

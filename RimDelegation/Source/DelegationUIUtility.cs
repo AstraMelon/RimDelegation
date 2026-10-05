@@ -1044,13 +1044,36 @@ namespace RimDelegation
             {
                 return "（无可用模式）";
             }
-            string s = string.Format("{0} · {1} · 速率 ×{2:0.##}", mode.LabelCap, mode.HoursLabel, mode.workRateMultiplier);
-            float mood = DelegationUtility.MoodEffectOf(mode.dailyMoodThought);
-            if (mood != 0f)
-            {
-                s += string.Format(" · 心情 {0:+0.#;-0.#}/天", mood);
-            }
-            return s;
+            // RIM-5（用户拍板 1A + 2B）：模式不再给速率系数、也不再直接挂心情 ——
+            // 它只剩"作息窗口 + 作业强度"两件事；心情与效率都由满意度产出（见 SatisfactionLine）。
+            return string.Format("{0} · {1} · 作业强度 {2:+0.#;-0.#;0}",
+                mode.LabelCap, mode.HoursLabel, mode.workIntensity);
+        }
+
+        /// <summary>
+        /// 「满意度」那一行（RIM-5）。**唯一一份措辞**：在途详情、原版页签、皮肤概览都调它，
+        /// 所以四处不会出现"同一趟委派两个满意度数字"。
+        ///
+        /// `satisfaction` = 0..1（0.5 中性）、`moodPerDay` = 每日心情、`rate` = 作业速率系数。
+        /// </summary>
+        public static string SatisfactionLine(float satisfaction, float moodPerDay, float rate)
+        {
+            float pct = Mathf.Clamp01(satisfaction);
+            string stage = DelegationSatisfaction.StageLabel(pct) ?? "—";
+            // 0..1 直接印成百分比：玩家一眼能看出"比中性高还是低"，比印 0.5 这种小数直观
+            return string.Format("满意度 {0} · {1} · 每天心情 {2:+0.#;-0.#;0} · 作业速率 ×{3:0.000}",
+                pct.ToStringPercent(), stage, moodPerDay, rate);
+        }
+
+        /// <summary>
+        /// 「满意度」一行，**给还没有 Delegation 实例的场合**（草稿 / 前往中计划）：
+        /// 按"预计值"算（吃喝与远行时间未知时取中性），并在末尾标明"预计"。
+        /// </summary>
+        public static string SatisfactionLineEstimated(DelegationModeDef mode, float daysAway = 0f)
+        {
+            float satisfaction = DelegationSatisfaction.EstimatedValue(mode, daysAway);
+            return SatisfactionLine(satisfaction, DelegationSatisfaction.Mood(satisfaction),
+                DelegationSatisfaction.RateFactor(satisfaction)) + "（预计）";
         }
 
         /// <summary>
@@ -1516,8 +1539,9 @@ namespace RimDelegation
                 DelegationModeDef mode = def?.ResolveMode(req.mode);
                 if (mode != null)
                 {
-                    lines.Add(string.Format("模式：{0} · {1} · 速率 ×{2:0.##}",
-                        mode.LabelCap, mode.HoursLabel, mode.workRateMultiplier));
+                    // RIM-5：模式不再给速率系数（用户拍板 1A），所以这一行只写作息 + 作业强度
+                    lines.Add(string.Format("模式：{0} · {1} · 作业强度 {2:+0.#;-0.#;0}",
+                        mode.LabelCap, mode.HoursLabel, mode.workIntensity));
                 }
                 if (req.approach != null)
                 {

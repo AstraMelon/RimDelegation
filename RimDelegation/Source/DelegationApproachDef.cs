@@ -5,9 +5,9 @@ using Verse;
 namespace RimDelegation
 {
     /// <summary>
-    /// 委派的**作战姿态** —— 与 <see cref="DelegationModeDef"/>（工时窗口 × 速率）正交的一条轴。
+    /// 委派的**作战姿态** —— 与 <see cref="DelegationModeDef"/>（工时窗口 × 作业强度）正交的一条轴。
     ///
-    /// 为什么不能塞进 `DelegationModeDef`：模式回答的是"**干多久**"（08:00–16:00、速率 ×1.1），
+    /// 为什么不能塞进 `DelegationModeDef`：模式回答的是"**干多久**"（08:00–16:00、作业强度 +3），
     /// 姿态回答的是"**怎么进去**"（顶着炮塔强攻、还是摸进去）。两者可以任意组合，
     /// 塞在一起会让模式表变成笛卡尔积。
     ///

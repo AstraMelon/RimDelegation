@@ -36,7 +36,8 @@
     </nullifyingPrecepts>
   </ThoughtDef>
 
-  <!-- 轻松工作：唯一能把心情拉回安全线的模式，所以给正收益 -->
+  <!-- 【RIM-5 起不再被挂载】轻松工作：数值已折算进满意度来源「作业强度」（workIntensity +3）。
+       模式不再直接挂心情，保留 Def 只为让旧存档里的这条记忆还能解析出来。 -->
   <ThoughtDef>
     <defName>RimDelegation_Thought_ModeRelaxed</defName>
     <thoughtClass>Thought_Memory</thoughtClass>
@@ -51,7 +52,8 @@
     <durationDays>1</durationDays>
   </ThoughtDef>
 
-  <!-- 加班工作：纯"长工时"的心理成本（生理上车队不扣心情，见 §19.25） -->
+  <!-- 【RIM-5 起不再被挂载】加班工作：数值已折算进满意度来源「作业强度」（workIntensity −4）。
+       保留理由同上：旧存档兼容。 -->
   <ThoughtDef>
     <defName>RimDelegation_Thought_ModeOvertime</defName>
     <thoughtClass>Thought_Memory</thoughtClass>
@@ -66,7 +68,8 @@
     <durationDays>1</durationDays>
   </ThoughtDef>
 
-  <!-- 全天候工作：心情只比加班多 -2 —— 剩下的差价刻意留给"疲劳 → 工伤倍率"承担 -->
+  <!-- 【RIM-5 起不再被挂载】全天候工作：数值已折算进满意度来源「作业强度」（workIntensity −6）。
+       保留理由同上：旧存档兼容。 -->
   <ThoughtDef>
     <defName>RimDelegation_Thought_DelegationOverwork</defName>
     <thoughtClass>Thought_Memory</thoughtClass>
@@ -148,13 +151,19 @@
     <durationDays>1</durationDays>
   </ThoughtDef>
 
-  <!-- ============ 委派模式：工时窗口 × 速率 × 心情代价（§19.25）============
+  <!-- ============ 委派模式：只有作息窗口 × 作业强度（RIM-5 重定价）============
 
-       | 模式     | 工时        | 日 h-eq | 心情 | 最低休息 | 工伤倍率 |
-       | 轻松工作 | 10:00-16:00 | 5.4     | +3   | ~84%     | ×1.0     |
-       | 正常工作 | 08:00-16:00 | 8.0     | 0    | ~84%     | ×1.0     |
-       | 加班工作 | 06:00-22:00 | 17.6    | -4   | ~37%     | ×2.4     |
-       | 全天候   | 24h         | 26.4    | -6   | ~10%     | ×3.6     |
+       RIM-5（2026-10-05）起模式**不再给效率、也不再直接挂心情**（用户拍板 1A + 2B）：
+         · 原来的 `workRateMultiplier`（×0.9 / ×1.0 / ×1.1）**不再被读取** —— 实例见 ModBoot 自检；
+         · 原来的每日心情（+3 / 0 / −4 / −6）折算成**满意度来源「作业强度」**（`workIntensity`）；
+         · 心情与效率都由满意度统一产出（Defs/RimDelegation_Satisfaction.xml + Mod 设置页）。
+       工时窗口**留在模式**：它是"作息定义"而不是增益 —— 干得久的模式自然日产高。
+
+       | 模式     | 工时        | 日 h-eq | 作业强度 | 最低休息 | 工伤倍率 | 满意度子分 |
+       | 轻松工作 | 10:00-16:00 | 5.4     | +3       | ~84%     | ×1.0     | 0.75       |
+       | 常规作业 | 08:00-16:00 | 8.0     | 0        | ~84%     | ×1.0     | 0.50       |
+       | 加班工作 | 06:00-22:00 | 17.6    | −4       | ~37%     | ×2.4     | 0.17       |
+       | 全天候   | 24h         | 26.4    | −6       | ~10%     | ×3.6     | 0.00       |
 
        工时窗口目前是**单段**（startHour/endHour）。设计稿里的"10-12 + 14-18 含午休"
        暂时折叠成等效连续窗口（总工时不变），因为：
@@ -166,43 +175,40 @@
   <RimDelegation.DelegationModeDef>
     <defName>RimDelegation_Mode_Relaxed</defName>
     <label>轻松工作</label>
-    <description>10:00 到 16:00，一天 6 小时，速率 ×0.9。唯一能回心情的模式：+3/天。产量最低，适合让刚打完仗的人缓一缓。</description>
+    <description>10:00 到 16:00，一天 6 小时，作业强度 +3（最轻松的一档）。产量最低，适合让刚打完仗的人缓一缓。</description>
     <startHour>10</startHour>
     <endHour>16</endHour>
-    <workRateMultiplier>0.9</workRateMultiplier>
-    <dailyMoodThought>RimDelegation_Thought_ModeRelaxed</dailyMoodThought>
+    <workIntensity>3</workIntensity>
     <abortWhenOutOfFood>true</abortWhenOutOfFood>
   </RimDelegation.DelegationModeDef>
 
   <RimDelegation.DelegationModeDef>
     <defName>RimDelegation_Mode_Normal</defName>
     <label>常规作业</label>
-    <description>08:00 到 16:00，一天 8 小时，速率 ×1。心情不增不减 —— 这是基线，也是可以一直干下去的那个选择。</description>
+    <description>08:00 到 16:00，一天 8 小时，作业强度 0（基线）—— 它不额外折腾人，也是可以一直干下去的那个选择。</description>
     <startHour>8</startHour>
     <endHour>16</endHour>
-    <workRateMultiplier>1</workRateMultiplier>
+    <workIntensity>0</workIntensity>
     <abortWhenOutOfFood>true</abortWhenOutOfFood>
   </RimDelegation.DelegationModeDef>
 
   <RimDelegation.DelegationModeDef>
     <defName>RimDelegation_Mode_Overtime</defName>
     <label>加班工作</label>
-    <description>06:00 到 22:00，一天 16 小时，速率 ×1.1。心情 -4/天；收工前休息条会掉到三成多，事故伤害概率在全天平均约 1.4 倍、傍晚峰值约 2.4 倍。</description>
+    <description>06:00 到 22:00，一天 16 小时，作业强度 −4（熬人）。收工前休息条会掉到三成多，事故伤害概率在全天平均约 1.4 倍、傍晚峰值约 2.4 倍。</description>
     <startHour>6</startHour>
     <endHour>22</endHour>
-    <workRateMultiplier>1.1</workRateMultiplier>
-    <dailyMoodThought>RimDelegation_Thought_ModeOvertime</dailyMoodThought>
+    <workIntensity>-4</workIntensity>
     <abortWhenOutOfFood>true</abortWhenOutOfFood>
   </RimDelegation.DelegationModeDef>
 
   <RimDelegation.DelegationModeDef>
     <defName>RimDelegation_Mode_AroundTheClock</defName>
     <label>全天候工作</label>
-    <description>24 小时不停，速率 ×1.1。心情 -6/天；休息条永远卡在 10% 的地板上，事故伤害概率长期约 3.5 倍、伤害也放大到 1.4 倍，事故伤害平均不到 3 天就出一次。真要靠这个赶工，记得备好医药。</description>
+    <description>24 小时不停，作业强度 −6（最狠的一档）。休息条永远卡在 10% 的地板上，事故伤害概率长期约 3.5 倍、伤害也放大到 1.4 倍，事故伤害平均不到 3 天就出一次。真要靠这个赶工，记得备好医药。</description>
     <startHour>0</startHour>
     <endHour>24</endHour>
-    <workRateMultiplier>1.1</workRateMultiplier>
-    <dailyMoodThought>RimDelegation_Thought_DelegationOverwork</dailyMoodThought>
+    <workIntensity>-6</workIntensity>
     <abortWhenOutOfFood>true</abortWhenOutOfFood>
   </RimDelegation.DelegationModeDef>
 
@@ -906,7 +912,7 @@
     <emergencyOvertimeHoursPerUse>4</emergencyOvertimeHoursPerUse>
     <emergencyOvertimeMoodThought>RimDelegation_Thought_EmergencyOvertime</emergencyOvertimeMoodThought>
 
-    <!-- 刻意不设 dailyMoodThought：心情全部由模式承担（见上面的定价基准）。
+    <!-- 刻意不设 dailyMoodThought（RIM-5 后仍然如此）：心情统一由**满意度**产出。
          再加一条"野外扎营 -3"会把基线做成负收益。 -->
     <completeMoodThought>RimDelegation_Thought_DelegationCompleted</completeMoodThought>
     <abortMoodThought>RimDelegation_Thought_DelegationAborted</abortMoodThought>
@@ -1029,7 +1035,7 @@
     <emergencyOvertimeHoursPerUse>4</emergencyOvertimeHoursPerUse>
     <emergencyOvertimeMoodThought>RimDelegation_Thought_EmergencyOvertime</emergencyOvertimeMoodThought>
 
-    <!-- 刻意不设 dailyMoodThought：与矿点一致，心情全部由模式承担。 -->
+    <!-- 刻意不设 dailyMoodThought：与矿点一致，心情统一由满意度产出。 -->
     <completeMoodThought>RimDelegation_Thought_DelegationCompleted</completeMoodThought>
     <abortMoodThought>RimDelegation_Thought_DelegationAborted</abortMoodThought>
 

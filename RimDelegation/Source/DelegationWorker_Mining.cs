@@ -50,11 +50,10 @@ namespace RimDelegation
         ///
         /// 为什么显示这个而不是"秒/格"：秒/格 是"一格要挥多久镐"，
         /// 数值在 5~250 秒之间跳，玩家没法拿它跟"一天能挖几格"直接对上；
-        /// 「格/作业小时」和对话框底部的「格/天」是同一量纲，只差"工时占比 × 模式系数"一层。
+        /// 「格/作业小时」和对话框底部的「格/天」是同一量纲，只差"工时占比 × 满意度速率系数"一层。
         ///
-        /// 这里是**单人基础速率**，不含 `DelegationModeDef.workRateMultiplier`
-        /// （×0.9 / ×1.0 / ×1.1）—— 模式对队里每个人一视同仁，不影响横向比较，
-        /// 而模式自己的系数就写在紧邻的模式行上。
+        /// 这里是**单人基础速率**，不含满意度给的作业速率系数（RIM-5 前是模式系数）
+        /// —— 满意度对全队一视同仁，不影响横向比较，而它就写在紧邻的「满意度」那一行上。
         /// </summary>
         public static float CellsPerWorkHour(Pawn p)
         {
@@ -139,7 +138,9 @@ namespace RimDelegation
                 return;
             }
 
-            float multiplier = d.mode?.workRateMultiplier ?? 1f;
+            // RIM-5：作业速率系数改由「满意度」给（用户拍板 1A/9A）——
+            // 模式不再提供效率，装载点还是这四处乘法，只是乘数换了来源。
+            float multiplier = d.SatisfactionRateFactor;
             ThingDef mineableDef = d.resourceDef;
             float dropChance = mineableDef?.building?.mineableDropChance ?? 1f;
             bool wasteable = mineableDef?.building?.mineableYieldWasteable ?? true;
@@ -251,8 +252,9 @@ namespace RimDelegation
             return string.Format("已交付 {0} × {1}（约 {2:0} 银）", d.oreDelivered, thingDef.LabelCap, value);
         }
 
-        /// <summary>这一队人一天能挖几格（含工时占比与模式系数）。</summary>
-        public static float CellsPerDay(List<Pawn> pawns, DelegationModeDef mode, PlanetTile tile)
+        /// <summary>这一队人一天能挖几格（含工时占比与满意度速率系数）。</summary>
+        public static float CellsPerDay(List<Pawn> pawns, DelegationModeDef mode, PlanetTile tile,
+            float rateFactor = 1f)
         {
             float perDay = 0f;
             if (pawns != null)
@@ -266,17 +268,18 @@ namespace RimDelegation
                     perDay += 60000f / TicksPerCell(pawns[i]);
                 }
             }
-            return perDay * mode.WorkFractionPerDay * mode.workRateMultiplier;
+            return perDay * (mode?.WorkFractionPerDay ?? 1f) * rateFactor;
         }
 
         public override float EstimatedUnitsPerDay(Delegation d, PlanetTile tile)
         {
-            return CellsPerDay(d.participants, d.mode, tile);
+            return d == null ? 0f : CellsPerDay(d.participants, d.mode, tile, d.SatisfactionRateFactor);
         }
 
-        public override float EstimateUnitsPerDayFor(List<Pawn> pawns, DelegationModeDef mode, PlanetTile tile, Site site = null)
+        public override float EstimateUnitsPerDayFor(List<Pawn> pawns, DelegationModeDef mode, PlanetTile tile,
+            Site site = null, float rateFactor = 1f)
         {
-            return mode == null ? 0f : CellsPerDay(pawns, mode, tile);
+            return mode == null ? 0f : CellsPerDay(pawns, mode, tile, rateFactor);
         }
 
         public override DelegationPreview MakePreview(Site site)

@@ -1136,7 +1136,7 @@ namespace RimDelegation
             //      S11：这两行**本身就是入口**（与原版页签同一个约定：能点的地方写一句提示）。
             //      于是操作区不再需要「切换委派模式」「结束条件」两颗按钮，
             //      底部只剩"动状态 / 破坏性"的那一排 —— 与皮肤底栏一致。
-            float mood = DelegationUtility.DailyMoodOffset(d.def, d.mode);
+            float mood = DelegationUtility.DailyMoodOffset(d);
             if (draw && Widgets.ButtonText(new Rect(x, y, w, LineH),
                     string.Format("RimDelegationTabMode".Translate(), d.ModeLine(), mood.ToString("+0.#;-0.#;0"))
                     + " · " + DelegationUIUtility.StatusWord(d, site) + "　（点击切换模式）"))

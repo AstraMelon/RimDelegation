@@ -83,6 +83,28 @@ namespace RimDelegation
         public int ticksSinceMoodTick;
         public int moodTicksGranted;
 
+        // ── 满意度（RIM-5）──────────────────────────────────────────────────
+        //
+        // 用户拍板 3A：**每支委派一个值**（不做逐人值 —— 那样要处理新加入 / 离队 / 伤员三种分叉）。
+        // 它同时产出两样东西：每日心情（多 stage 记忆，沿 6A 的 memory thought 路线）与作业速率系数。
+
+        /// <summary>
+        /// 远行队**实际开始移动**那一刻（`GenTicks.TicksAbs`）。0 = 没有这段旅程（就地委派/就地开工）。
+        ///
+        /// 为什么不是"计划下达那一刻"：用户 2026-10-05 拍板明确要"实际开始移动那一刻"
+        /// （`Caravan_PathFollower.MovingNow` 第一次为真的那一 tick，由地点 comp 记下来、开工时交给委派）。
+        /// </summary>
+        public int departTickAbs;
+
+        /// <summary>最近一段时间的吃喝：窗口内每一次吃饭记一条（窗口见 `DelegationSatisfactionDef.mealRecentDays`）。</summary>
+        public List<DelegationMealRecord> recentMeals = new List<DelegationMealRecord>();
+
+        /// <summary>
+        /// 当前满意度 0..1（0.5 = 中性）。由 <see cref="RefreshSatisfaction" /> 每 tick 刷新，
+        /// UI 与 worker 只读它 —— 不要每帧现算（要读难度 / 遍历吃饭记录）。
+        /// </summary>
+        public float satisfaction = 0.5f;
+
         // 产出（S2）
         /// <summary>已采出但尚未交付到车队库存的数量（会保留小数余数）。</summary>
         public float oreUnits;
@@ -646,6 +668,10 @@ namespace RimDelegation
             return Mathf.Max(0f, ticks);
         }
 
+        /// <summary>
+        /// 「模式」那一行。RIM-5 起**不再写速率**（用户拍板 1A：模式不提供效率，
+        /// 效率改由满意度给，见 <see cref="SatisfactionLine" />）；工时窗口留着 —— 那仍是模式的职责。
+        /// </summary>
         public string ModeLine()
         {
             string line;
@@ -655,13 +681,87 @@ namespace RimDelegation
             }
             else
             {
-                line = string.Format("{0} · {1} · 速率 ×{2:0.##}", mode.LabelCap, mode.HoursLabel, mode.workRateMultiplier);
+                line = string.Format("{0} · {1}", mode.LabelCap, mode.HoursLabel);
             }
             if (approach != null)
             {
                 line += " · " + approach.LabelCap;
             }
             return line;
+        }
+
+        // ── 满意度（RIM-5）──────────────────────────────────────────────────
+        //
+        // 公式的唯一收口在 `DelegationSatisfaction`，这里只做**每支委派的缓存与记录**：
+        //   · 每 tick 刷新一次（读难度 + 遍历吃饭记录，别放在 UI 每帧里）；
+        //   · 吃饭记录来自 `DelegationUtility.GrantFieldMeal`（野外伙食那条 Harmony 补丁点）。
+
+        /// <summary>从"实际开始移动"（没有这段旅程就退回开工时刻）到此刻的在外天数。</summary>
+        public float DaysAway
+        {
+            get
+            {
+                long anchor = departTickAbs > 0 ? departTickAbs : startedTickAbs;
+                if (anchor <= 0L)
+                {
+                    return 0f;
+                }
+                float ticks = GenTicks.TicksAbs - anchor;
+                return ticks <= 0f ? 0f : ticks / (TicksPerHour * 24f);
+            }
+        }
+
+        /// <summary>重算满意度并裁剪过期的吃饭记录（便宜，每 tick 调一次）。</summary>
+        public void RefreshSatisfaction()
+        {
+            satisfaction = DelegationSatisfaction.Value(this);
+            PruneMeals();
+        }
+
+        /// <summary>记一顿饭（阶段来自野外伙食 Def；由 `DelegationUtility.GrantFieldMeal` 调用）。</summary>
+        public void RecordMeal(int stage)
+        {
+            if (recentMeals == null)
+            {
+                recentMeals = new List<DelegationMealRecord>();
+            }
+            recentMeals.Add(new DelegationMealRecord { tickAbs = GenTicks.TicksAbs, stage = stage });
+            PruneMeals();
+        }
+
+        /// <summary>丢掉窗口外的吃饭记录；顺便封顶长度（极端长局里不让它无限长）。</summary>
+        private void PruneMeals()
+        {
+            if (recentMeals == null)
+            {
+                recentMeals = new List<DelegationMealRecord>();
+                return;
+            }
+            int nowAbs = GenTicks.TicksAbs;
+            int window = (int)(DelegationSatisfaction.MealRecentDays * TicksPerHour * 24f);
+            for (int i = recentMeals.Count - 1; i >= 0; i--)
+            {
+                DelegationMealRecord m = recentMeals[i];
+                if (m == null || nowAbs - m.tickAbs > window)
+                {
+                    recentMeals.RemoveAt(i);
+                }
+            }
+            const int MaxMeals = 60;
+            while (recentMeals.Count > MaxMeals)
+            {
+                recentMeals.RemoveAt(0);
+            }
+        }
+
+        /// <summary>作业速率系数（喂给原来读 `mode.workRateMultiplier` 的那几处乘法）。</summary>
+        public float SatisfactionRateFactor => DelegationSatisfaction.RateFactor(satisfaction);
+
+        /// <summary>本趟的「满意度」一行（原版页签/详情用；皮肤侧也调同一份措辞）。</summary>
+        public string SatisfactionLine()
+        {
+            return DelegationUIUtility.SatisfactionLine(satisfaction,
+                DelegationSatisfaction.Mood(satisfaction), SatisfactionRateFactor);
         }
 
         public void ExposeData()
@@ -696,6 +796,10 @@ namespace RimDelegation
             Scribe_Values.Look(ref abortOnOutOfFood, "abortOnOutOfFood", true);
             Scribe_Values.Look(ref ticksSinceMoodTick, "ticksSinceMoodTick", 0);
             Scribe_Values.Look(ref moodTicksGranted, "moodTicksGranted", 0);
+            // RIM-5 满意度：出发时刻 + 吃饭记录 + 缓存值（缓存也存，读档第一帧 UI 就不会先显示中性值）
+            Scribe_Values.Look(ref departTickAbs, "roDepartTickAbs", 0);
+            Scribe_Collections.Look(ref recentMeals, "roRecentMeals", LookMode.Deep);
+            Scribe_Values.Look(ref satisfaction, "roSatisfaction", 0.5f);
 
             // 暂停 / 停摆 / 随机事件（§19.24）
             Scribe_Values.Look(ref paused, "paused", false);
@@ -755,6 +859,9 @@ namespace RimDelegation
                 if (participants == null) participants = new List<Pawn>();
                 // 流程进度是每 tick 都要读的对象，读档后绝不能是 null
                 if (flow == null) flow = new DelegationFlowState();
+                // RIM-5：满意度缓存与吃饭记录同理（旧存档里这两个键不存在 ⇒ 走默认值/null）
+                if (recentMeals == null) recentMeals = new List<DelegationMealRecord>();
+                satisfaction = Mathf.Clamp01(satisfaction);
                 if (recentEventDefs == null) recentEventDefs = new List<DelegationEventDef>();
                 if (recentEventTicks == null) recentEventTicks = new List<int>();
                 // 两条平行列表长度必须一致，否则冷却判定会错位

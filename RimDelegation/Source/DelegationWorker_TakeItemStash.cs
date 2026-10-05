@@ -476,13 +476,14 @@ namespace RimDelegation
                 return 0f;
             }
             float hours = delta / (float)Delegation.TicksPerHour;
-            float multiplier = d.mode?.workRateMultiplier ?? 1f;
+            // RIM-5：速率系数改由「满意度」给（模式不再提供效率）
+            float multiplier = d.SatisfactionRateFactor;
             return capacity * tripsPerWorkHour * hours * multiplier;
         }
 
-        /// <summary>这一队人一天能搬几件（含工时占比与模式系数）。avgItemMass = 0 时无法估算。</summary>
+        /// <summary>这一队人一天能搬几件（含工时占比与满意度速率系数）。avgItemMass = 0 时无法估算。</summary>
         public static float ItemsPerDay(List<Pawn> pawns, DelegationModeDef mode, float avgItemMass,
-            float tripsPerWorkHour = HaulTripsPerWorkHour)
+            float tripsPerWorkHour = HaulTripsPerWorkHour, float rateFactor = 1f)
         {
             if (mode == null || avgItemMass <= 0f)
             {
@@ -494,7 +495,7 @@ namespace RimDelegation
                 return 0f;
             }
             float hoursPerDay = 24f * mode.WorkFractionPerDay;
-            float kgPerDay = capacity * tripsPerWorkHour * hoursPerDay * mode.workRateMultiplier;
+            float kgPerDay = capacity * tripsPerWorkHour * hoursPerDay * rateFactor;
             return kgPerDay / avgItemMass;
         }
 
@@ -671,7 +672,7 @@ namespace RimDelegation
             // 技能经验：默认 skillDef 为空 ⇒ 不给（原版搬运不给经验）。
             if (def.skillDef != null)
             {
-                float coefficient = XpPerTick * delta * (d.mode?.workRateMultiplier ?? 1f);
+                float coefficient = XpPerTick * delta * d.SatisfactionRateFactor;
                 for (int i = 0; i < d.participants.Count; i++)
                 {
                     Pawn p = d.participants[i];
@@ -739,12 +740,13 @@ namespace RimDelegation
         public override float EstimatedUnitsPerDay(Delegation d, PlanetTile tile)
         {
             return d == null ? 0f : ItemsPerDay(d.participants, d.mode, AverageItemMass(d.deposit),
-                TripsPerWorkHour);
+                TripsPerWorkHour, d.SatisfactionRateFactor);
         }
 
-        public override float EstimateUnitsPerDayFor(List<Pawn> pawns, DelegationModeDef mode, PlanetTile tile, Site site = null)
+        public override float EstimateUnitsPerDayFor(List<Pawn> pawns, DelegationModeDef mode, PlanetTile tile,
+            Site site = null, float rateFactor = 1f)
         {
-            return ItemsPerDay(pawns, mode, AverageMassOnSite(site, def), TripsPerWorkHour);
+            return ItemsPerDay(pawns, mode, AverageMassOnSite(site, def), TripsPerWorkHour, rateFactor);
         }
 
         /// <summary>

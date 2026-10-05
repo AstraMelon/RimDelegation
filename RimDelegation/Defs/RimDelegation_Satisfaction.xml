@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Defs>
+
+  <!-- ============ RIM-5 满意度（心情 + 效率的唯一来源）============================
+
+       用户原话（2026-10-05）：「现状：作业模式会提供效率和心情的增益减益／修改：作业模式不提供这些
+       效果影响，独立一套机制"满意度"出去，提供心情和效率增益减益，满意度来源：最近一段时间的
+       吃喝，游戏难度，远行时间（受文化影响），要让玩家可配置」
+
+       拍板（同日，任务板议题 RIM-5 评论）：1A 只摘速率（工时窗口留在模式）／2B 模式心情折算成
+       来源「作业强度」／3A 每支委派一个值／4B 远行时间从"远行队实际开始移动"起算／5C 本轮不接
+       文化（只做吃喝 + 难度 + 远行时间 + 作业强度）／6A 心情走 memory thought／7A 四来源各自
+       开关 + 权重／8A 数值双落点（本文件给曲线与默认值，Mod 设置页是玩家实际生效值）／
+       9A 效率仍乘在原来那四处。
+
+       公式（唯一收口：Source/DelegationSatisfaction.cs）
+
+         子分（0..1，0.5 = 中性）：
+           吃喝     = clamp01((近 mealRecentDays 天每次吃饭的野外伙食心情均值 + 2) / 6)
+           难度     = clamp01((原版 colonistMoodOffset + 10) / 20)      // 和平 +10 → 1、冷酷 −10 → 0
+           远行时间 = 0.5 × (1 − clamp01((在外天数 − travelGraceDays) / travelFullPenaltyDays))
+           作业强度 = clamp01(0.5 + mode.workIntensity / intensitySpan)
+
+         汇总：满意度 = Σ(开关 × 权重 × 子分) ÷ Σ(开关 × 权重)（权重可负；权重和为 0 ⇒ 0.5）
+
+         产出：作业速率 = 1 + (满意度 − 0.5) × 2 × efficiencyRange
+               每日心情 = 记忆 Def 第 floor(满意度 × 阶段数) 档的 baseMoodEffect × moodScale
+
+       ⚠️ 在外天数从"远行队实际开始移动"那一刻起算（用户拍板 4B）：由站点组件记为
+          `WorldObjectComp_Delegations.planDepartTickAbs`，开工时交给 `Delegation.departTickAbs`；
+          就地委派（没有路程）退回"开工那一刻"。
+       ============================================================ -->
+
+  <!-- 满意度记忆：**多 stage**，按满意度落在第几档取。durationDays 1 ⇒ 每天刷新不叠加。 -->
+  <ThoughtDef>
+    <defName>RimDelegation_Thought_Satisfaction</defName>
+    <thoughtClass>Thought_Memory</thoughtClass>
+    <stages>
+      <li>
+        <label>怨气冲天</label>
+        <description>吃得差、走得远、活又重 —— 这趟委派我一天都不想多待。</description>
+        <baseMoodEffect>-8</baseMoodEffect>
+      </li>
+      <li>
+        <label>心里不痛快</label>
+        <description>这趟活儿处处别扭：吃不好，睡不够，人也累。</description>
+        <baseMoodEffect>-4</baseMoodEffect>
+      </li>
+      <li>
+        <label>还过得去</label>
+        <description>不功不过的一趟活儿，干完就回家。</description>
+        <baseMoodEffect>0</baseMoodEffect>
+      </li>
+      <li>
+        <label>干得挺顺</label>
+        <description>吃得不错，作息也合心意，手里的活儿顺得很。</description>
+        <baseMoodEffect>4</baseMoodEffect>
+      </li>
+      <li>
+        <label>心气很足</label>
+        <description>这趟委派干得舒服：伙食好、日子顺，回去还能跟人讲一讲。</description>
+        <baseMoodEffect>8</baseMoodEffect>
+      </li>
+    </stages>
+    <stackLimit>1</stackLimit>
+    <durationDays>1</durationDays>
+  </ThoughtDef>
+
+  <RimDelegation.DelegationSatisfactionDef>
+    <defName>RimDelegation_Satisfaction_Default</defName>
+    <label>满意度（默认）</label>
+    <description>委派满意度：四类来源加权得出一个 0~1 的值，同时决定参与者的每日心情与作业速率。曲线参数与默认权重在这里；玩家实际生效值在 Mod 设置页（「恢复满意度默认值」即从本 Def 重取）。</description>
+    <thought>RimDelegation_Thought_Satisfaction</thought>
+    <mealRecentDays>3</mealRecentDays>
+    <travelGraceDays>1</travelGraceDays>
+    <travelFullPenaltyDays>9</travelFullPenaltyDays>
+    <intensitySpan>12</intensitySpan>
+    <efficiencyRange>0.15</efficiencyRange>
+    <moodScale>1</moodScale>
+    <sources>
+      <li>
+        <source>Meals</source>
+        <enabled>true</enabled>
+        <weight>1</weight>
+      </li>
+      <li>
+        <source>Difficulty</source>
+        <enabled>true</enabled>
+        <weight>1</weight>
+      </li>
+      <li>
+        <source>TravelTime</source>
+        <enabled>true</enabled>
+        <weight>1</weight>
+      </li>
+      <li>
+        <source>WorkIntensity</source>
+        <enabled>true</enabled>
+        <weight>1</weight>
+      </li>
+    </sources>
+  </RimDelegation.DelegationSatisfactionDef>
+
+</Defs>

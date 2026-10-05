@@ -1141,10 +1141,12 @@ namespace RimDelegationRadiusUI
             c.Gap();
 
             // ---- 可点行见方法开头的 `ClickRow`（S25 提到三段之外）
+            // RIM-5：模式行不再报"速率"（模式不提供效率），心情与速率都说满意度那一行。
+            // 草稿里还没有 Delegation 实例 ⇒ 用预计口径（吃喝与在外时间未知时取中性）。
             float mood = DelegationUtility.DailyMoodOffset(draft.def, draft.mode);
             ClickRow("Action/Snooze", mood < 0f ? "Stat/TrendDown" : "Stat/Mood", draft.ModeLine(),
-                DelegationUIUtility.MoodLine(mood), true,
-                "点击切换委派模式（作息窗口 / 速率 / 心情代价）——换班本身不扣心情", draft.OpenModeMenu);
+                DelegationUIUtility.SatisfactionLineEstimated(draft.mode), true,
+                "点击切换委派模式（作息窗口 / 作业强度）——换班本身不扣心情，满意度按新模式重算", draft.OpenModeMenu);
 
             ClickRow("Action/Check", draft.abortWhenOutOfFood ? "Alert/Warning" : "Stat/Food",
                 "结束条件：" + draft.EndConditionLabel(),
@@ -1178,7 +1180,8 @@ namespace RimDelegationRadiusUI
             c.Gap();
             float perDay = draft.mode == null
                 ? 0f
-                : worker.EstimateUnitsPerDayFor(chosen, draft.mode, draft.site.Tile, draft.site);
+                : worker.EstimateUnitsPerDayFor(chosen, draft.mode, draft.site.Tile, draft.site,
+                    DelegationSatisfaction.RateFactor(DelegationSatisfaction.EstimatedValue(draft.mode, 0f)));
 
             // ---- 总进度（S20：与在途详情**同款的一行**）
             // 草稿没有"已完成的量"，但**分母是有的**（预览区间 dispMin/Max）⇒ `0/40 件` 不是假数字；
@@ -2646,7 +2649,8 @@ namespace RimDelegationRadiusUI
         {
             DelegationWorker worker = d.Worker;
             List<GlanceEntry> rows = new List<GlanceEntry>();
-            float mood = DelegationUtility.DailyMoodOffset(d.def, d.mode);
+            // RIM-5：在途用**真实**满意度（含吃饭记录与在外天数），不要再走"预计"重载
+            float mood = DelegationUtility.DailyMoodOffset(d);
             float days = d.EstimatedDaysLeft(site.Tile);
             bool working = !d.paused && !d.IsStalled(GenTicks.TicksAbs) && d.IsWorkTime(site, GenTicks.TicksAbs);
 
@@ -2680,13 +2684,14 @@ namespace RimDelegationRadiusUI
                 SubIcon = mood < 0f ? "Stat/TrendDown" : "Stat/Mood",
                 Tint = Palette.Flat.InkMid,
                 Main = d.ModeLine(),
-                Sub = DelegationUIUtility.MoodLine(mood),
+                // RIM-5：这一行的 Sub 换成满意度（唯一一份措辞：D.SatisfactionLine）
+                Sub = d.SatisfactionLine(),
                 SubColor = mood < 0f ? Palette.Warn : Palette.Flat.InkLow,
                 // S10：模式行**本身就是切换入口**（用户要求"切换委派模式直接在大纲里调整"）。
                 // 与原版页签的模式行同一套心智：能点的地方给提示，不给两个入口。
                 Clickable = true,
                 OnClick = () => selected?.OpenModeMenu(d),
-                Tip = "点击切换委派模式（作息窗口 / 速率 / 心情代价）——换班本身不扣心情"
+                Tip = "点击切换委派模式（作息窗口 / 作业强度）——换班本身不扣心情，满意度按新模式重算"
             });
             rows.Add(new GlanceEntry
             {
@@ -3150,11 +3155,11 @@ namespace RimDelegationRadiusUI
                 SubIcon = mood < 0f ? "Stat/TrendDown" : "Stat/Mood",
                 Tint = Palette.Flat.InkMid,
                 Main = draft.ModeLine(),
-                Sub = DelegationUIUtility.MoodLine(mood),
+                Sub = DelegationUIUtility.SatisfactionLineEstimated(draft.mode),
                 SubColor = mood < 0f ? Palette.Warn : Palette.Flat.InkLow,
                 Clickable = true,
                 OnClick = draft.OpenModeMenu,
-                Tip = "点击切换委派模式（作息窗口 / 速率 / 心情代价）——换班本身不扣心情"
+                Tip = "点击切换委派模式（作息窗口 / 作业强度）——换班本身不扣心情，满意度按新模式重算"
             });
             if (!draft.def.approaches.NullOrEmpty())
             {
@@ -3187,7 +3192,8 @@ namespace RimDelegationRadiusUI
 
             float perDay = (draft.mode == null || worker == null)
                 ? 0f
-                : worker.EstimateUnitsPerDayFor(chosen, draft.mode, site.Tile, site);
+                : worker.EstimateUnitsPerDayFor(chosen, draft.mode, site.Tile, site,
+                    DelegationSatisfaction.RateFactor(DelegationSatisfaction.EstimatedValue(draft.mode, 0f)));
             rows.Add(new GlanceEntry
             {
                 Icon = "Common/Clock",

@@ -421,13 +421,11 @@ namespace RimDelegation
                 for (int i = 0; i < def.modes.Count; i++)
                 {
                     DelegationModeDef local = def.modes[i];
-                    string label = string.Format("{0} · {1} · 速率 ×{2:0.##}",
-                        local.LabelCap, local.HoursLabel, local.workRateMultiplier);
-                    float mood = DelegationUtility.MoodEffectOf(local.dailyMoodThought);
-                    if (mood != 0f)
-                    {
-                        label += string.Format(" · 心情 {0:+0.#;-0.#}/天", mood);
-                    }
+                    // RIM-5（用户拍板 1A + 2B）：模式只报"作息窗口 + 作业强度"，
+                    // 它给的心情与效率都由满意度产出 —— 所以这里直接把预计满意度摊给玩家看。
+                    string label = string.Format("{0} · {1} · 作业强度 {2:+0.#;-0.#;0}",
+                        local.LabelCap, local.HoursLabel, local.workIntensity);
+                    label += "\n" + DelegationUIUtility.SatisfactionLineEstimated(local);
                     if (!local.description.NullOrEmpty())
                     {
                         label += "\n" + local.description;

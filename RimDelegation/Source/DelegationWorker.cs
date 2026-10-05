@@ -192,8 +192,12 @@ namespace RimDelegation
         /// `site` 是可选的补充信息：采矿只需要"人 + 模式"就够（速率与矿点无关），
         /// 但物资点的速率取决于现场物件的**质量**（见 <see cref="DelegationWorker_TakeItemStash"/>），
         /// 所以它必须能拿到事件点。默认 null ⇒ 老实现不受影响。
+        ///
+        /// `rateFactor`（RIM-5）= 满意度给出的作业速率系数。草稿/计划阶段还没有
+        /// <see cref="Delegation" /> 实例，所以由调用方估一个传进来；不传 = 1（不按满意度缩放）。
         /// </summary>
-        public virtual float EstimateUnitsPerDayFor(List<Pawn> pawns, DelegationModeDef mode, PlanetTile tile, Site site = null)
+        public virtual float EstimateUnitsPerDayFor(List<Pawn> pawns, DelegationModeDef mode, PlanetTile tile,
+            Site site = null, float rateFactor = 1f)
         {
             return 0f;
         }

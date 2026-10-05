@@ -120,6 +120,15 @@ namespace RimDelegation
         /// <summary>计划下达的时刻（显示"在路上多久了"用）。</summary>
         public int plannedAtTick;
 
+        /// <summary>
+        /// 计划里的远行队**实际开始移动**那一刻（`GenTicks.TicksAbs`）。
+        ///
+        /// 用户 2026-10-05 拍板 4B：满意度来源③「远行时间」从这一刻起算，而不是从"计划下达"起算。
+        /// 0 = 还没动过（`Caravan_PathFollower.MovingNow` 一次都没为真 —— 例如原地待命等玩家）。
+        /// 开工时这个值会交给 <see cref="Delegation.departTickAbs" />。
+        /// </summary>
+        public int planDepartTickAbs;
+
         /// <summary>有没有在途计划（远行队还在路上、抵达就会开工）。</summary>
         public bool HasPlan => plannedCaravan != null && !plannedCaravan.Destroyed && plannedDef != null;
 
@@ -163,6 +172,7 @@ namespace RimDelegation
             plannedDef = null;
             plannedRequest = null;
             plannedAtTick = 0;
+            planDepartTickAbs = 0;
         }
 
         /// <summary>
@@ -190,6 +200,14 @@ namespace RimDelegation
             {
                 ClearPlan("地点已不存在");
                 return;
+            }
+            // 4B（RIM-5）：记下"真的开始走了"那一刻 —— `MovingNow` 第一次为真。
+            // 放在最前面：人一上路就该记，之后改道/抵达都不再改它（改道会让整条计划作废并一起丢掉）。
+            if (planDepartTickAbs <= 0 && caravan.pather.MovingNow)
+            {
+                planDepartTickAbs = GenTicks.TicksAbs;
+                DelegationUtility.LogVerbose(
+                    $"在途计划开始移动：{caravan.LabelCap} → {site.LabelCap}（满意度「远行时间」从此计时）");
             }
             if (caravan.Tile == site.Tile)
             {
@@ -620,11 +638,13 @@ namespace RimDelegation
                     string verb = d.Worker?.WorkVerb ?? "采";
                     sb.AppendLine($"事件点存量：全点剩余 {d.deposit.UnitsRemaining}/{d.deposit.totalUnits} {unit} · 本次可{verb} {d.totalCells} {unit} · 已被委派 {d.deposit.timesDelegated} 次");
                 }
-                float moodPerDay = DelegationUtility.DailyMoodOffset(d.def, d.mode);
+                float moodPerDay = DelegationUtility.DailyMoodOffset(d);
                 if (moodPerDay != 0f)
                 {
                     sb.AppendLine($"每天心情：{moodPerDay:+0.#;-0.#}（已挂 {d.moodTicksGranted} 天）");
                 }
+                // RIM-5：满意度是这一趟"心情 + 效率"的唯一来源，检视文本里必须能看到它
+                sb.AppendLine(d.SatisfactionLine());
                 string progress = d.Worker?.ProgressLabel(d);
                 if (!progress.NullOrEmpty())
                 {
@@ -902,6 +922,12 @@ namespace RimDelegation
 
             active = new Delegation(def, resolved, caravan, site, dep);
 
+            // RIM-5：把"实际开始移动那一刻"交给委派（满意度来源③「远行时间」按它起算）。
+            // 没有在途旅程（就地委派 / 原地开工）时退回"开工这一刻" —— 语义就是"没有路程"。
+            // ⚠️ 必须在下面的 ClearPlan 之前抄走：那一步会把 planDepartTickAbs 清 0。
+            active.departTickAbs = planDepartTickAbs > 0 ? planDepartTickAbs : GenTicks.TicksAbs;
+            active.RefreshSatisfaction();
+
             // S9：开工这一刻抄一份「现场物资」台账（"已获取 3/12 件"里的分母）。
             // 必须紧跟构造之后 —— worker.OnStart 已经跑完，现场还没被搬走一件。
             active.CaptureItemLedger(site);
@@ -1074,6 +1100,10 @@ namespace RimDelegation
                 d.ticksStalled += delta;
                 return;
             }
+
+            // 满意度（RIM-5）：每 tick 刷新一次缓存 —— 它要读难度、数在外天数、遍历吃饭记录，
+            // 放在这里比放在 UI 每帧里便宜得多（UI 与 worker 只读 d.satisfaction / d.SatisfactionRateFactor）。
+            d.RefreshSatisfaction();
 
             // 心情：按天给车队成员挂记忆（离图也照挂，回来还留着余味）
             d.ticksSinceMoodTick += delta;
@@ -1459,7 +1489,14 @@ namespace RimDelegation
             FireEvent(d, site, def);
         }
 
-        /// <summary>每天给车队里的每个人挂心情记忆（def 基础 + 模式额外）。</summary>
+        /// <summary>
+        /// 每天给车队里的每个人挂心情记忆。
+        ///
+        /// RIM-5：**模式不再自己挂心情**（用户拍板 1A + 2B + 6A）——
+        /// 模式的 +3/0/−4/−6 折算进满意度来源「作业强度」，这里统一挂**满意度那一档**的记忆。
+        /// 0 心情的档位不挂：0 心情的记忆不会出现在需求列表里（`MoodOffset() != 0f` 会把它滤掉），
+        /// 挂了只是白占内存 —— 与野外伙食同一条规矩。
+        /// </summary>
         private void GrantDailyMood(Delegation d)
         {
             Caravan caravan = d.caravan;
@@ -1476,10 +1513,18 @@ namespace RimDelegation
                     continue;
                 }
                 DelegationUtility.GrantThought(p, d.def?.dailyMoodThought);
-                DelegationUtility.GrantThought(p, d.mode?.dailyMoodThought);
+                float satisfactionMood = DelegationSatisfaction.Mood(d.satisfaction);
+                if (satisfactionMood != 0f)
+                {
+                    DelegationUtility.GrantThought(p, DelegationSatisfaction.Def?.thought,
+                        DelegationSatisfaction.Stage(d.satisfaction));
+                }
             }
             d.moodTicksGranted++;
-            DelegationUtility.LogVerbose($"委派每日心情已挂载（第 {d.moodTicksGranted} 天，{caravan.LabelCap}）");
+            DelegationUtility.LogVerbose(
+                $"委派每日心情已挂载（第 {d.moodTicksGranted} 天，满意度 {d.satisfaction:0.00}"
+                + $"（{DelegationSatisfaction.StageLabel(d.satisfaction) ?? "?"}）"
+                + $"，每天心情 {DelegationSatisfaction.Mood(d.satisfaction):+0.#;-0.#;0}，{caravan.LabelCap}）");
         }
 
         /// <summary>产出让车队超重时提醒一次（原版超重会让车队无法移动，不能默默坑玩家）。</summary>
@@ -1777,6 +1822,8 @@ namespace RimDelegation
             Scribe_Defs.Look(ref plannedDef, "roPlannedDef");
             Scribe_Deep.Look(ref plannedRequest, "roPlannedRequest");
             Scribe_Values.Look(ref plannedAtTick, "roPlannedAtTick", 0);
+            // RIM-5：计划里"实际开始移动"的那一刻（4B 的计时起点）
+            Scribe_Values.Look(ref planDepartTickAbs, "roPlanDepartTickAbs", 0);
             if (Scribe.mode == LoadSaveMode.PostLoadInit)
             {
                 if (active != null && active.def == null)
@@ -1934,9 +1981,10 @@ namespace RimDelegation
         /// <summary>
         /// **作业期间**切换委派模式（用户要求：委派过程中支持模式切换）。
         ///
-        /// 为什么不设代价：模式本来就是"作息表"，换一班不该罚款；
-        /// 真正的代价在模式自己的每日心情记忆上 —— 换过去之后，下一次每日心情挂载
-        /// 就用新模式的 `ThoughtDef`，旧记忆按 `durationDays` 自然过期。
+        /// 为什么不设代价：模式本来就是"作息表"，换一班不该罚款。
+        /// RIM-5 起模式的后果**只有一处**：它是满意度来源「作业强度」的输入，
+        /// 换过去以后满意度立刻变（每 tick 重算），但**每日心情记忆**仍要等下一次日结算才换档
+        /// —— 旧记忆按 `durationDays` 自然过期，所以"换班"不会立刻兑现心情。
         /// ⚠️ 因此**不要**在这里重置 `ticksSinceMoodTick`：那会让玩家靠频繁换模式白拿心情。
         /// </summary>
         public void OpenModeMenu(Delegation d)
@@ -1960,13 +2008,11 @@ namespace RimDelegation
                         continue;
                     }
                     bool current = d.mode == local;
-                    string label = string.Format("{0}{1} · {2} · 速率 ×{3:0.##}",
-                        current ? "✓ " : "     ", local.LabelCap, local.HoursLabel, local.workRateMultiplier);
-                    float mood = DelegationUtility.MoodEffectOf(local.dailyMoodThought);
-                    if (mood != 0f)
-                    {
-                        label += string.Format(" · 心情 {0:+0.#;-0.#}/天", mood);
-                    }
+                    string label = string.Format("{0}{1} · {2} · 作业强度 {3:+0.#;-0.#;0}",
+                        current ? "✓ " : "     ", local.LabelCap, local.HoursLabel, local.workIntensity);
+                    // RIM-5：把"换到这个模式后大概是什么满意度、每天多少心情、速率多少"摊开，
+                    // 否则玩家只看到作息窗口，完全不知道这一换代价在哪。
+                    label += "\n" + DelegationUIUtility.SatisfactionLineEstimated(local, d.DaysAway);
                     if (current)
                     {
                         label += "（当前）";
@@ -1992,8 +2038,8 @@ namespace RimDelegation
             DelegationModeDef old = d.mode;
             d.mode = mode;
             Messages.Message(
-                string.Format("委派模式已切换：{0} → {1}（{2} · 速率 ×{3:0.##}）",
-                    old?.LabelCap.ToString() ?? "?", mode.LabelCap, mode.HoursLabel, mode.workRateMultiplier),
+                string.Format("委派模式已切换：{0} → {1}（{2} · 作业强度 {3:+0.#;-0.#;0}；满意度已按新模式重算，每日心情下一次日结算兑现）",
+                    old?.LabelCap.ToString() ?? "?", mode.LabelCap, mode.HoursLabel, mode.workIntensity),
                 MessageTypeDefOf.NeutralEvent, false);
             DelegationUtility.LogVerbose(
                 $"委派模式切换：{d.def?.defName} @ {Site?.Label} → {mode.defName}");
@@ -2003,8 +2049,9 @@ namespace RimDelegation
         {
             Command_Action cmd = new Command_Action();
             cmd.defaultLabel = "委派模式：" + d.ModeLine();
-            cmd.defaultDesc = "切换委派模式（作息窗口 × 速率 × 心情代价）。\n" +
-                              "换班本身不扣心情 —— 代价由模式自己的每日心情记忆承担，所以换过去之后才生效。";
+            cmd.defaultDesc = "切换委派模式（作息窗口 × 作业强度）。\n" +
+                              "换班本身不扣心情 —— 满意度会按新模式（作业强度那一项）立刻重算，"
+                              + "每日心情记忆要等下一次日结算才换档。";
             cmd.icon = TexCommand.Replant;
             cmd.action = () => OpenModeMenu(d);
             return cmd;

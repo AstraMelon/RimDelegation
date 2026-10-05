@@ -241,18 +241,21 @@ namespace RimDelegation
         public override float EstimatedUnitsPerDay(Delegation d, PlanetTile tile)
         {
             if (d == null) return 0f;
-            return DayRate(d.participants, d.mode, def);
+            return DayRate(d.participants, d.mode, def, d.SatisfactionRateFactor);
         }
 
-        public override float EstimateUnitsPerDayFor(List<Pawn> pawns, DelegationModeDef mode, PlanetTile tile, Site site = null)
+        public override float EstimateUnitsPerDayFor(List<Pawn> pawns, DelegationModeDef mode, PlanetTile tile,
+            Site site = null, float rateFactor = 1f)
         {
-            return DayRate(pawns, mode, def);
+            return DayRate(pawns, mode, def, rateFactor);
         }
 
-        private static float DayRate(List<Pawn> pawns, DelegationModeDef mode, DelegationDef def)
+        private static float DayRate(List<Pawn> pawns, DelegationModeDef mode, DelegationDef def,
+            float rateFactor = 1f)
         {
             if (mode == null) return 0f;
-            float perHour = RescueUtility.PercentPerWorkHour(UsableCount(pawns), BestSkillOf(pawns, def), mode);
+            float perHour = RescueUtility.PercentPerWorkHour(UsableCount(pawns), BestSkillOf(pawns, def), mode,
+                rateFactor);
             return perHour * 24f * mode.WorkFractionPerDay;
         }
 
@@ -376,7 +379,7 @@ namespace RimDelegation
 
             // ── 阶段 2：救治 / 破门 / 抬运 ──
             float rate = RescueUtility.PercentPerWorkHour(UsableCount(d.participants),
-                BestSkillOf(d.participants, def), d.mode);
+                BestSkillOf(d.participants, def), d.mode, d.SatisfactionRateFactor);
             float hours = delta / (float)Delegation.TicksPerHour;
             float before = d.cellsMined;
             d.cellsMined = Mathf.Min(RescueUtility.TotalWork, d.cellsMined + rate * hours);

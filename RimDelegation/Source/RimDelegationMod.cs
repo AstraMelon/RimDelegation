@@ -93,7 +93,67 @@ namespace RimDelegation
                 + "　　鼠标离开两栏就回到你自己的折叠设置；被图钉（列头 ＋/－ 左边的 PIN）固定展开的栏不参与。\n"
                 + "　　折叠 / 图钉本身在主控台的列头里点，与这里无关（它们是本地偏好，不进存档）。");
             listing.Label("工作时长由【委派模式】定义（默认 6:00–22:00），在选择委派的对话框里切换。");
+            listing.GapLine();
+            // RIM-5（用户拍板 7A + 8A）：满意度是"心情 + 效率"的唯一来源，四个来源各自开关 + 权重。
+            // 数值双落点：曲线参数与默认值在 Def（DelegationSatisfactionDef），这里是玩家实际生效值。
+            listing.Label("满意度（RIM-5：心情与效率的唯一来源，模式不再直接给这两样）：");
+            listing.CheckboxLabeled("　启用满意度", ref Settings.satisfactionEnabled);
+            listing.Label("　　关掉它 = 满意度恒为中性（每天心情 0、作业速率 ×1），四个来源一律不算。");
+            if (Settings.satisfactionEnabled)
+            {
+                DrawSatisfactionRow(listing, "最近一段时间的吃喝（近 3 天每次吃饭）",
+                    DelegationSatisfactionSource.Meals);
+                DrawSatisfactionRow(listing, "游戏难度（和平 → 高分；冷酷 → 低分）",
+                    DelegationSatisfactionSource.Difficulty);
+                DrawSatisfactionRow(listing, "远行时间（从远行队「实际开始移动」起算）",
+                    DelegationSatisfactionSource.TravelTime);
+                DrawSatisfactionRow(listing, "作业强度（轻松 +3 / 常规 0 / 加班 −4 / 全天候 −6）",
+                    DelegationSatisfactionSource.WorkIntensity);
+                if (listing.ButtonTextLabeled("　效率幅度（作业速率系数）",
+                        string.Format("±{0:0.00}", Settings.satisfactionEfficiencyRange)))
+                {
+                    Settings.CycleEfficiencyRange();
+                }
+                if (listing.ButtonTextLabeled("　心情幅度（每日记忆）",
+                        string.Format("×{0:0.##}", Settings.satisfactionMoodScale)))
+                {
+                    Settings.CycleMoodScale();
+                }
+                listing.Label(string.Format(
+                    "　　公式：满意度 = Σ(开关 × 权重 × 子分) ÷ Σ(开关 × 权重)（0.5 = 中性）；"
+                    + "作业速率 = 1 + (满意度 − 0.5) × 2 × {0:0.00}；每日心情 = 档位值 × {1:0.##}。\n"
+                    + "　　子分：吃喝 = 近 3 天吃饭心情均值；难度 = 当前 {2:0.00}（原版 colonistMoodOffset）；"
+                    + "远行 = 出门 1 天内中性、之后 9 天线性降到 0；强度 = 0.5 + 模式强度 ÷ 12。\n"
+                    + "　　权重档位只有 0 / 0.5 / 1 / 1.5 / 2（本项目不用滑条）：想要别的浮点数，"
+                    + "直接改 Config\\ModSettings 里的同一批键即可。",
+                    Settings.satisfactionEfficiencyRange, Settings.satisfactionMoodScale,
+                    DelegationSatisfaction.DifficultyValue()));
+                if (listing.ButtonTextLabeled("　恢复满意度默认值", "从 Defs 重新取值"))
+                {
+                    Settings.ResetSatisfactionToDefaults();
+                }
+            }
             listing.End();
+        }
+
+        /// <summary>满意度某一个来源的一行：勾选框（开关）+ 档位按钮（权重）。</summary>
+        private static void DrawSatisfactionRow(Listing_Standard listing, string label,
+            DelegationSatisfactionSource source)
+        {
+            RimDelegationSettings s = Settings;
+            float weight = s.SourceWeight(source);
+            bool on = s.SourceEnabled(source);
+            // ⚠️ `Listing_Standard.CheckboxLabeled` 是 **void**（不是"点了没有"的 bool），
+            //    所以写法是"传引用、回来对比"。
+            listing.CheckboxLabeled(string.Format("　{0}", label), ref on);
+            if (on != s.SourceEnabled(source))
+            {
+                s.SetSourceEnabled(source, on);
+            }
+            if (listing.ButtonTextLabeled("　　权重", string.Format("{0:0.##}", weight)))
+            {
+                s.CycleSourceWeight(source);
+            }
         }
 
         /// <summary>S32：尸体处置三档的显示名（玩家的词：带走 / 立刻处理 / 丢弃）。</summary>

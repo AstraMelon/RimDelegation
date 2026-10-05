@@ -753,17 +753,18 @@ namespace RimDelegation
             return true;
         }
 
-        /// <summary>救援速率：每人每作业小时推进的百分点。</summary>
-        public static float PercentPerWorkHour(int pawnCount, int bestSkillLevel, DelegationModeDef mode)
+        /// <summary>
+        /// 救援速率：每人每作业小时推进的百分点。
+        ///
+        /// `rateFactor`（RIM-5）= 满意度给出的作业速率系数：作业模式不再提供效率（用户拍板 1A），
+        /// 乘数改由调用方按满意度传进来（在途传 <see cref="Delegation.SatisfactionRateFactor" />）。
+        /// </summary>
+        public static float PercentPerWorkHour(int pawnCount, int bestSkillLevel, DelegationModeDef mode,
+            float rateFactor = 1f)
         {
             float men = Mathf.Max(1, pawnCount);
             float skillFactor = 0.6f + 0.04f * Mathf.Clamp(bestSkillLevel, 0, 20);   // 0 级 0.6 → 10 级 1.0 → 20 级 1.4
-            float rate = PercentPerHourPerPawn * men * skillFactor;
-            if (mode != null)
-            {
-                rate *= mode.workRateMultiplier;
-            }
-            return rate;
+            return PercentPerHourPerPawn * men * skillFactor * rateFactor;
         }
 
         /// <summary>
