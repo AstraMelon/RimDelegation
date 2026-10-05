@@ -51,15 +51,25 @@ foreach ($doc in @('DESIGN.md', 'README.md')) {
     $f = Join-Path $dst $doc
     if (Test-Path $f) { Remove-Item $f -Force }
 }
+# RIM-16：调研产物（`_flow_audit`）同样不随包发布。它是**目录**，而 `/XD` 只保证源侧不被读，
+# 目标侧那份旧副本要靠这里显式清掉 —— 否则它会一直躺在游戏目录里（RIM-16 验收明确要求"不存在"）。
+$auditDst = Join-Path $dst '_flow_audit'
+if (Test-Path $auditDst) { Remove-Item $auditDst -Recurse -Force }
 # robocopy 退出码 0-7 均表示成功
 # ⚠️ 必须显式限制重试次数：robocopy 的默认值是 /R:1000000 /W:30 ——
 #    只要有一个文件被占用（游戏开着）或没有写权限，它就会"重试一百万次、每次等 30 秒"，
 #    表现为**永久挂起**（而不是报错）。生产脚本里这是必须堵的坑。
+#
+# RIM-16：`_flow_audit` 是**调研产物、不是 mod 的一部分**（RIM-10 轮次的 869 行清点稿）。
+# 它已经被搬出 mod 目录（现在在 `D:\Game\Rimworld Dev\_rim10_flow_audit\`），
+# 这里再显式排除一次 —— 因为 `_flow_audit` 这个目录名将来很可能被下一个人复用，
+# 而 `/MIR` 会把 mod 目录里的一切镜像进游戏。
 $rcArgs = @(
     $src, $dst,
     '/MIR',
     '/R:2', '/W:1',
     '/XD', (Join-Path $src 'Source\obj'), (Join-Path $src 'Source\bin'), (Join-Path $src '.git'),
+    (Join-Path $src '_flow_audit'),
     '/XF', 'DESIGN.md', 'README.md',
     '/NFL', '/NDL', '/NJH', '/NJS', '/NP'
 )

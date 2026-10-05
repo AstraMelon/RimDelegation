@@ -647,12 +647,14 @@ namespace RimDelegation
                 return 0f;
             }
             float ticks = 0f;
+            // RIM-12：固定段时长要乘**开工时冻结的**倍率（与条、字、进度推进同一份口径）
+            float scale = DelegationFlow.ScaleOf(flow);
             // S23：段表要走"含冻结"的访问器 —— 读 Def 上的全段会把这条委派根本没走的段
             // （例如无威胁时的战术侦察/评估/交战）算进预计剩余时间。
             List<DelegationPhaseDef> pre = f.PreludeFor(flow);
             for (int i = flow.preludeIndex; i < pre.Count; i++)
             {
-                ticks += pre[i].Ticks;
+                ticks += flow.TicksOf(pre[i], scale);
             }
             // 收尾只在"已经进入收尾"之后才算进 ETA —— 那是干完之后的事，
             // 提前把它加进"预计剩余"会让玩家以为收工时间变长了。
@@ -661,7 +663,7 @@ namespace RimDelegation
                 List<DelegationPhaseDef> suf = f.SuffixFor(flow);
                 for (int j = flow.suffixIndex; j < suf.Count; j++)
                 {
-                    ticks += suf[j].Ticks;
+                    ticks += flow.TicksOf(suf[j], scale);
                 }
             }
             ticks -= flow.phaseTicks;   // 当前这一段的余量（前置与收尾共用同一个计数器）

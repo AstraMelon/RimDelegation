@@ -5894,3 +5894,144 @@ RimDelegation 与 RimDelegation - Radius UI 一直是**两个 mod**：本体出�
 4. `DelegationUIUtility.MoodLine` 仍在被草稿页用作"每天心情"那一行（与满意度行并存），
    要不要合并成一行，等一轮 UI 反馈再定。
 
+---
+
+### 19.111 RIM-11 ~ RIM-16：流程数值可管理化 + 旁白逻辑化与随机度（S38）`[验证]`
+
+本轮是**一次收口**：把 RIM-10（父议题，只做调研与拆分）下面的 6 条子议题一次做完。
+用户原话（2026-10-05，本会话指令）：**「执行RIM-10 to RIM-16」**。
+
+#### 用户需求与拍板（照录）
+
+| 议题 | 用户原话（评论） | 拍板结果 |
+|---|---|---|
+| RIM-11 | 「RIM-11调查：撤离时间是否可以随机，一个固定值加减偏移值，brainstrom偏移值设计逻辑／启动自检那 2 条要」 | `3A` 三个「撤离」统一 **2h**；启动自检 2 条**做**；随机偏移按"固定值 ± 偏移值"实装（设计逻辑见下） |
+| RIM-12 | 「使用推荐」 | `2A` 全局倍率 + 每段可选覆盖；`12A` 草稿页口径改为**含**固定流程；`4B` 技能因子单独立项；**`甲`** 倍率只对新开工生效（开工冻结） |
+| RIM-13 | 「按照推荐来」 | `5A` 多标签集合 + 权重；`6A` 权重 + 不重复窗口 + 间隔区间全上 |
+| RIM-14 | 「按照推荐来」 | `7A` L3 进度 + L2 特质 + L1 小时/季节/全球事件，**天气不做**；存档兼容走 `甲`（读档丢弃旧下标重掷） |
+| RIM-15 | 「按照推荐来」 | `9A` 18 段全补齐（敌情 + 驮兽，每池 ≥3 条）+ 25 组去重 + P-D11~P-D16 硬伤 + 休息池扩充 |
+| RIM-16 | 「按照推荐来」 | `10A` 总开关恢复**默认开**；**不做**老玩家配置的一次性迁移；证据文件搬出 mod 目录 |
+
+#### 机制定稿 A：流程数值（RIM-11 / RIM-12）
+
+**A-1 唯一时长收口 = `DelegationPhaseDef.TicksWithScale(scale)`。**
+体检时发现"四处显示口径"这个说法**只对了一半**：`DelegationPhaseDef.HoursLabel` 的读者是 **0**
+（全库被读的 `HoursLabel` 都属于 `DelegationModeDef`），`DelegationStage.totalHours` 是**只写不读**。
+真正需要同步的是 `DelegationStageList` 里**读 `phase.hours` 的那 8 处**（前置 4 + 收尾 4）+ 实际推进
+（`AdvancePrelude` / `AdvanceSuffix`）+ 整条 ETA（`FlowRemainingTicks` → `EstimatedDaysLeft` → 那 9 处
+"预期于 … 完成 / 剩余 X 天"）。所以本轮把"段时长"收敛成**两个入口**：
+`st.HoursOf(phase, scale)`（显示）与 `st.TicksOf(phase, scale)`（推进），全部消费点只走它们。
+
+**A-2 倍率（RIM-12）**：`RimDelegationSettings.flowHoursScale`，设置页 5 档
+`0.5× / 0.75× / 1× / 1.5× / 2×`。**开工那一刻冻结**进 `DelegationFlowState.flowHoursScale`
+（用户拍板 `甲`）—— 理由是 `flow.phaseTicks` 是绝对进度，实时读设置会让进行中的委派
+"条与字在同一帧跳变"。老存档 / 没有 flow 状态 ⇒ `DelegationFlow.ScaleOf` 一律返回 `1f`，
+行为与加倍率之前逐字一致。
+
+**A-3 随机偏移（RIM-11）**：`DelegationPhaseDef.hoursJitter`（小时，空/0 = 不抖）。
+掷法定稿（这就是用户要的"偏移值设计逻辑"）：
+
+1. **掷点**：`DelegationFlow.Freeze` —— 与段表、倍率**同一处、同一时刻**，结果存进
+   `DelegationFlowState.jitteredPhase` / `jitteredHours`（按 **defName** 存，不按下标，
+   因为段表会被敌情过滤，按下标对不齐）。读档**不重掷**，UI 与推进同源。
+2. **分布**：均匀 `U(base − j, base + j)`。
+3. **量化**：四舍五入到 **0.25 小时**网格。UI 只显示一位小数（`1.8h`），不量化会写出
+   `1.8347h` 这种既不可读、又让人误以为精确的数字。
+4. **下限**：`0.25h`（再短就不像"做成了一件事"）。
+5. **落点**：**只给三个「撤离」段**（各 ±0.5h ⇒ 1.5–2.5h），因为它们都是 `afterWork = true` 的
+   **收尾段** —— 抖动不会让"开工那一刻给出的预计完工时刻"变成谎话；前置段抖动会。
+6. **关掉的方式**：删掉那一行 `<hoursJitter>` 或写 `0`，行为立刻回到固定值。
+
+#### 机制定稿 B：旁白选池与条件层（RIM-13 / RIM-14）
+
+**B-1 XML 里仍是 `<li>纯文本</li>`，条件的载体是行首方括号指令。**
+这是本轮**唯一一处偏离子议题原始描述**的技术选择：子议题写的是
+`List<string>` → `List<AmbientLine>`（并因此需要"机器转换 260 条"或"兼容读取层"）。
+实证后的选择是：**XML 形状保持不变**，在行首写一段可选的指令块，`ResolveReferences` 之后
+按需解析成 `AmbientLine`。理由三条：
+
+- 260 条旁白**一条都不用改写**（旧写法 = 无指令 = 永远可说）⇒ 改动面从"重排 1400 行 XML"
+  降到"想加条件的那些行各加一个前缀"；
+- RimWorld 的 `<li Class="...">` 逐字段写法会让这个文件膨胀一倍以上，且改一条文案要动五行；
+- 解析在**纯 C# 层**（`AmbientLineSyntax`），可以用一个 net472 小工程离线跑用例
+  （见"验收证据"），而 XML 结构改动没法离线验。
+
+语法（唯一一份实现在 `Source/AmbientLine.cs` 的注释里）：
+`[solo|group|packed|hostile|night|day|early|mid|late | w=N | p=A-B | h=A-B | t=TraitDef:degree | ts=… | c=GameConditionDef | once]`
+后接正文。四个池名自带**隐式标签**（`ambientLinesSolo` → `solo`、`…Packed` → `packed`、
+`…Hostile` → `hostile`、默认池无标签），所以旧池语义一字不变。
+
+**B-2 选池：短路优先级链 → 多标签并集。**
+原来 `Pick` 是"单人池 > 驮兽池 > 有敌情池 > 默认池"，选中前面那个就**再也不看后面** ——
+于是"一个人去打有守军的矿点"永远听不到那 5 条敌情旁白，而"战斗评估 / 交战"这种只有敌情池的段
+在单人时**一句旁白都没有**。现在四个池**合并成候选集**，每一条各自过 `Matches`：
+标签（情境）+ 进度区间 + 当地小时区间 + 特质 + 全球事件 + `once`。
+
+**B-3 权重与特异性**：有效权重 = `weight × (1 + 标签数)`（标签越多越"具体"，越该优先）。
+
+**B-4 随机度三件套**（用户 `6A`）：
+① 每条 `weight`（默认 1）；② **不重复窗口** = 最近 `min(候选数 − 1, 3)` 条不重复
+（彻底消掉 `A-B-A-B`，`MineLoot`/`WorkLoot` 的 2 条单人池也一样）；
+③ 换句间隔改**区间**：`ambientRerollHours` 从 `float` 变成**字符串**
+（`"0.5"` = 固定，`"0.5~1.5"` = 每次抽完重掷下次间隔）。
+
+**B-5 存档契约**：掷定结果从"池内下标"改成**稳定 id**（`来源池#池内下标` 的 FNV-1a）。
+`AmbientLine.id` 是唯一身份，`Current()` 按 id 找回同一句 —— 候选集随情境变化时下标会指错，
+id 不会。老存档 `ambientPickId == 0` ⇒ 走"确定性哈希"兜底（用户拍板 `甲`：读档换一句，不崩、不越界）。
+新增 Scribe 键 4 个：`roAmbientPickId` / `roAmbientNextReroll` / `roAmbientRecent` / `roAmbientSeenOnce`。
+
+#### 本轮推翻的三个过期前提（重要）
+
+1. **`HoursLabel` / `totalHours` 不是显示口径**（见 A-1）—— RIM-10 的"四处口径"说法要按 A-1 修正。
+2. **「注释 5.5h vs 实算 7.0h」里的 7.0 本身是错的。** 体检脚本按委派逐个复算，
+   本机三条"有敌情"路径**全是 6.0h**（开采 = 战术侦察 1 + 战斗评估 1 + 交战 1 + 搜集战利品 0.5
+   + 建立营地 0.5 + 撤离 2）。RIM-10 的调研稿把"开采 7 段"和"工作站 7 段"**混算**了 ——
+   而工作站那条也有 `WorkScout`（`requireNoThreat`）不参与有敌情分支，实算同样是 6.0h。
+   **凡是"某个数字看起来差了一截"的说法，先跑 `tools\Check-DefsXml.ps1` 对一遍再改注释。**
+3. **英文 Keyed 的 `--` 早已修掉**（commit `b92bcd9`）。当前两份 Keyed 各 64 key、键集 1:1、
+   两份都能被 `XmlDocument.Load` 解析。RIM-1 / RIM-12 / RIM-16 里"59 个 key 作废"的说法全部过期，
+   数字应统一成 **64 key / 91 行**（本轮把脚本的扫描根从 `Defs\` 扩到 `Defs + Patches + Languages`，
+   从机制上堵住这类"只扫 Defs"的缺口）。
+
+#### 落点与不变量 `[验证]`
+
+- **新增文件**：`Source/AmbientLine.cs`（`AmbientLine` + `AmbientLineSyntax` + `AmbientPoolCache` +
+  `AmbientPoolSet`）。
+- **存档新增**：`DelegationFlowState` 5 个键（4 个旁白 + `roFlowHoursScale` + `roJitteredPhase` /
+  `roJitteredHours`）；`RimDelegationSettings` 1 个键（`flowHoursScale`）。
+  全部是"新键 + 老存档取默认值"，**不改任何既有键的语义**。
+- **[不变量] 总开关关掉时行为与改动前逐字一致**：`DelegationUIUtility.AmbientEnabled` 为假时，
+  `MarkActive` **连掷定都不做**（`DelegationAmbient.Tick` 也照旧在 UI 层被跳过），
+  池的解析结果一个字都不影响画面。
+- **[不变量] 段表冻结语义不变**：`hoursJitter` 与倍率都挂在"开工冻结"这条路线上，
+  不新增第二个冻结点。
+- **[不变量] `TicksPerHour` 绝不被倍率改**：它另有 12 个无关读者（StallFor、报告耗时、
+  历史、事件冷却、旁白间隔），改它就是改"已发生时间"的折算口径。
+
+#### S38 验收步骤
+
+① `tools\Check-DefsXml.ps1` 退出码 **0**（10 个 XML 良构 + 18 段流程零 WARN）；
+② `_probe_ambient` 的解析用例 **57/57 通过**（指令语法 / 隐式标签 / 稳定 id / 写错必报）；
+③ 进游戏看启动横幅：`DelegationPhaseDef 18 个`，且**没有**新的 Warning（尤其是
+   "同名流程段时长不一致"与"旁白池总共只有 ≤1 条"这两条 —— 数值改对之后不该亮）；
+④ 委派一次搜刮：待下达草稿页应出现「固定流程：侦察环境 + 移动到目标区域 + 破门 + 撤离 共 6.0 小时
+   （与人数/技能无关）」一行，且"预计 X–Y 天完"比改动前**多约 0.25 天**（= 6h）；
+⑤ 设置页把倍率切到 `2×`，**新开**一条委派：流程条上写的是 `2h / 2h` 这一类翻倍值，
+   而在途的老委派**不变**（冻结语义）；切回 `1×` 后新委派与改动前逐字一致；
+⑥ 旁白：单人打一个**有守军**的矿点，在「战术侦察」段应能出现敌情句（改动前永远不会）；
+   换句间隔不再是整齐的 0.5h；
+⑦ 读一个改动前的存档：不报错、不越界，旁白会**重掷一条**（预期行为）；
+⑧ 关掉「流程显示随机描述」⇒ 流程块里没有任何旁白，且与改动前逐字一致。
+
+#### 遗留（未拍板 / 另立议题）
+
+1. **`4B`「段耗时 × 技能」仍未做**（用户拍板单独立项）——`DelegationPhaseDef.skillDef`
+   目前只决定"谁去做 + 怎么显示"，不决定耗时。
+2. **`2C` 三档预设（写实 / 标准 / 快餐）**未做：等倍率落地后作为"打包层"另立。
+3. **天气层仍然不做**（实证：`RimWorld.WeatherManager` 的唯一宿主是 `Verse.Map.weatherManager`，
+   `WorldWeather` 在整个 Managed 目录 0 命中，`Planet.Tile` / `Site` 无任何天气成员）。
+   将来若要，替代路径是"世界级 GameCondition → `GameConditionDef.weatherDef` → 某地图天气"，
+   而不是"读世界某点的天气"。
+4. **设置页文案仍是 C# 里的中文字面量**（`RimDelegationMod.cs`，全文件 1400+ 个 CJK 字符），
+   本轮新增的两处也照同一风格写。要可翻译必须"加 Keyed 键 + 把字面量换成 `.Translate()`"两件事一起做。
+

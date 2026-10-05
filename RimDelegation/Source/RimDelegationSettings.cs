@@ -90,12 +90,17 @@ namespace RimDelegation
         public bool collapsedCaravanSection;
 
         /// <summary>
-        /// 流程里的**随机描述（旁白）**是否显示（S26）。**默认关**。
+        /// 流程里的**随机描述（旁白）**是否显示（S26 起有开关；RIM-16 恢复默认开）。
         ///
-        /// 用户口径：「暂时关闭一下流程的随机描述，有些不符合逻辑」—— 先关，等他看够了再开。
+        /// 用户口径（S26）：「暂时关闭一下流程的随机描述，有些不符合逻辑」—— 先关，等他看够了再开。
+        /// RIM-13/14/15 把"不符合逻辑"的机制级根子（选池短路、没有时机/说话人判据、池子太薄）
+        /// 都修掉之后，按 RIM-10 §七-10 拍板 `10A` **恢复默认开**。
+        ///
+        /// ⚠️ 迁移口径（用户拍板）：**不做一次性翻开**。已经手改过配置存了 `false` 的玩家保持关着
+        /// （尊重他自己关过的选择）；键缺省的老配置会用新默认值 = 开。
         /// 判据只有一份：<see cref="DelegationUIUtility.AmbientEnabled" />。
         /// </summary>
-        public bool flowAmbientEnabled = false;
+        public bool flowAmbientEnabled = true;
 
         // ── 打扫战场（S31，用户拍板 5A「做成可配档」）─────────────────────────────
         //
@@ -199,6 +204,36 @@ namespace RimDelegation
         /// <summary>心情幅度：每日满意度记忆的心情值 × 这个系数（默认 1）。</summary>
         public float satisfactionMoodScale = 1f;
 
+        // ── RIM-12：流程固定段时长的全局倍率 ────────────────────────────────────
+        //
+        // 只影响**固定流程段**（侦察 / 移动 / 破门 / 交战 / 撤离…），不影响主作业速率
+        //（那是"满意度 / 模式"的地盘）。
+        //
+        // ⚠️ 生效方式是**开工那一刻冻结**（用户拍板 `甲`）：`flow.phaseTicks` 是绝对进度，
+        //    若实时读这里，玩家在委派进行中改一下倍率，条与文字会在同一帧跳变。
+        //    代价说清楚：改设置**不会**影响已经在路上的委派，只影响之后新开工的。
+        /// <summary>RIM-12：流程固定段时长倍率（默认 1×，即与改动前逐字一致）。</summary>
+        public float flowHoursScale = 1f;
+
+        /// <summary>
+        /// RIM-12：倍率档位 `0.5× / 0.75× / 1× / 1.5× / 2×`（设置页按钮只能给档位，不是滑条；
+        /// 想要更细的值直接手改 `Config\ModSettings\...xml`，Scribe 会原样读写）。
+        /// </summary>
+        private static readonly float[] FlowHoursScaleSteps = { 0.5f, 0.75f, 1f, 1.5f, 2f };
+
+        /// <summary>切到下一档倍率。</summary>
+        public void CycleFlowHoursScale()
+        {
+            flowHoursScale = NextStep(FlowHoursScaleSteps, flowHoursScale, 2);
+        }
+
+        /// <summary>倍率的显示文本（`1×` / `0.75×` …）。</summary>
+        public string FlowHoursScaleLabel()
+        {
+            float v = flowHoursScale <= 0f ? 1f : flowHoursScale;
+            return v.ToString("0.##") + "×";
+        }
+
         // ── 「委派」主控台窗口的几何（S8）───────────────────────────────────────
         // 窗口可拖拽可缩放，位置与尺寸存在这里，下次打开原样恢复。
         // 抄的是 Radius UI - Quest Menu 的做法：-1 = 还没记录过（用默认位置），
@@ -233,7 +268,7 @@ namespace RimDelegation
             Scribe_Values.Look(ref collapsedCombatSection, "collapsedCombatSection", false);
             Scribe_Values.Look(ref collapsedCollectSection, "collapsedCollectSection", false);
             Scribe_Values.Look(ref collapsedCaravanSection, "collapsedCaravanSection", false);
-            Scribe_Values.Look(ref flowAmbientEnabled, "flowAmbientEnabled", false);
+            Scribe_Values.Look(ref flowAmbientEnabled, "flowAmbientEnabled", true);
             Scribe_Values.Look(ref cleanupTakeEquipment, "cleanupTakeEquipment", true);
             Scribe_Values.Look(ref corpseCleanup, "corpseCleanup", CorpseCleanupMode.ButcherHere);
             Scribe_Values.Look(ref cleanupCapturePrisoners, "cleanupCapturePrisoners", true);
@@ -260,6 +295,12 @@ namespace RimDelegation
             Scribe_Values.Look(ref satisfactionWeightWorkIntensity, "satisfactionWeightWorkIntensity", 1f);
             Scribe_Values.Look(ref satisfactionEfficiencyRange, "satisfactionEfficiencyRange", 0.15f);
             Scribe_Values.Look(ref satisfactionMoodScale, "satisfactionMoodScale", 1f);
+            // RIM-12：流程固定段时长倍率（只对新开工的委派生效，见字段注释）
+            Scribe_Values.Look(ref flowHoursScale, "flowHoursScale", 1f);
+            if (flowHoursScale <= 0f || float.IsNaN(flowHoursScale) || float.IsInfinity(flowHoursScale))
+            {
+                flowHoursScale = 1f;
+            }
             if (pinnedSites == null)
             {
                 pinnedSites = new List<int>();

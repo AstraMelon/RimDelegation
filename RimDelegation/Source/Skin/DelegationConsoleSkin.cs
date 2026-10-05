@@ -1187,14 +1187,21 @@ namespace RimDelegationRadiusUI
             // 草稿没有"已完成的量"，但**分母是有的**（预览区间 dispMin/Max）⇒ `0/40 件` 不是假数字；
             // 真正算不出来的只有"完成时间"，那时才写"无法估算"（用户口径：条目要在，不知道就说不知道）。
             c.Section("RimDelegationTabTotalProgress".Translate());
+            // RIM-12：固定流程的耗时算进 ETA（修 P-A3，与草稿页/运行时同口径）
+            float fixedFlowDays = DelegationUIUtility.FixedFlowHours(draft.def, draft.site) / 24f;
             string tail = string.Format("0/{0} {1}", draft.dispMaxCells, worker.UnitName);
             tail += perDay > 0f
                 ? string.Format(" · 预计完成时间：{0:0.#}–{1:0.#} 天",
-                    draft.dispMinCells / perDay, draft.dispMaxCells / perDay)
+                    fixedFlowDays + draft.dispMinCells / perDay, fixedFlowDays + draft.dispMaxCells / perDay)
                 : " · 预计完成时间：无法估算";
             c.Progress(tail, 0f, draft.exactDeposit != null
                 ? "这一处的底细已经摸清了 ⇒ 上面是按实际规模算的"
                 : "这一处的底细要等队伍到了才清楚，所以分母给的是上限");
+            string fixedFlowLineSkin = DelegationUIUtility.FixedFlowLine(draft.def, draft.site);
+            if (!fixedFlowLineSkin.NullOrEmpty())
+            {
+                c.Line(fixedFlowLineSkin, RadiusFont.Scale.Meta, Palette.Flat.InkLow);
+            }
             c.Line(string.Format("RimDelegationTabHours".Translate(), 0f, 0f) + "（尚未开工）",
                 RadiusFont.Scale.Meta, Palette.Flat.InkLow);
             c.Gap();
@@ -3194,13 +3201,16 @@ namespace RimDelegationRadiusUI
                 ? 0f
                 : worker.EstimateUnitsPerDayFor(chosen, draft.mode, site.Tile, site,
                     DelegationSatisfaction.RateFactor(DelegationSatisfaction.EstimatedValue(draft.mode, 0f)));
+            float fixedGlanceDays = DelegationUIUtility.FixedFlowHours(draft.def, site) / 24f;
             rows.Add(new GlanceEntry
             {
                 Icon = "Common/Clock",
                 SubIcon = "Common/Cal",
                 Tint = Palette.Flat.InkMid,
                 Main = perDay > 0f
-                    ? string.Format("预计 {0:0.#}–{1:0.#} 天", draft.dispMinCells / perDay, draft.dispMaxCells / perDay)
+                    ? string.Format("预计 {0:0.#}–{1:0.#} 天",
+                        fixedGlanceDays + draft.dispMinCells / perDay,
+                        fixedGlanceDays + draft.dispMaxCells / perDay)
                     : "未知",
                 Sub = perDay > 0f
                     ? string.Format("约 {0:0.#} {1}/天（按当前模式与已选人员）", perDay, worker.UnitName)

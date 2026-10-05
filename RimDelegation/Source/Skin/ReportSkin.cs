@@ -1,5 +1,7 @@
 using System.Collections.Generic;
 using RimDelegation;
+using RimWorld;
+using RimWorld.Planet;
 using RadiusUI.Framework;
 using UnityEngine;
 using Verse;
@@ -19,14 +21,21 @@ namespace RimDelegationRadiusUI
     ///   · 原版画法的那份（`DelegationReportUI.Draw`）**保留**：主控台皮肤不可用时签核窗口落回它，
     ///     这是"界面绝不空窗"的最后一道。
     ///
+    /// RIM-9 追加（用户：「需要具体显示：参与人（含图标），具体产出（含图标，数量，价值）」）：
+    ///   · 参与者不再只在概要里写一行「参与 3 人」，而是**逐人头像 + 名字**；
+    ///   · 产出不再只有一句 `DeliverySummary`，而是**逐行**：物品图标 + 名称 + ×N 件 · kg · 约 X 银
+    ///     （行模型直接复用 `DelegationUIUtility.CleanupRows` ⇒ 与主控台同一份来源）。
+    ///
     /// 数据来源只有 `DelegationReportData`（`DelegationRecord.ToReportData()` /
     /// `DelegationReportData.Build(...)`），本类**不碰任何逻辑**。
     /// </summary>
     internal static class ReportSkin
     {
+        private const float ItemRowH = 26f;
+
         /// <summary>
-        /// 画一份报告（标题 → 概要 → 可滚动的事件明细）。<paramref name="scroll" /> 由调用方持有
-        /// （历史详情与签核窗口各一份滚动位置）。
+        /// 画一份报告（标题 → 概要 → 参与者 → 实际产出 → 可滚动的事件明细）。
+        /// <paramref name="scroll" /> 由调用方持有（历史详情与签核窗口各一份滚动位置）。
         /// </summary>
         public static void Draw(Rect r, DelegationReportData data, ref Vector2 scroll)
         {
@@ -49,7 +58,26 @@ namespace RimDelegationRadiusUI
             {
                 linesH += Mathf.Max(lhMeta, RadiusFont.HeightAt(lines[i], w, RadiusFont.Scale.Meta, false));
             }
-            float contentH = lhTitle + 6f + summaryH + 10f + lhMeta + linesH + 20f;
+
+            // ---- RIM-9 追加：参与者网格（头像 + 名字）
+            const float IconSize = 34f;
+            const float CellW = 78f;
+            const float CellH = IconSize + 4f + 16f;
+            List<Pawn> crew = data.participants;
+            int crewCount = crew?.Count ?? 0;
+            int crewCols = Mathf.Max(1, Mathf.FloorToInt((w + 6f) / CellW));
+            int crewRows = crewCount <= 0 ? 0 : Mathf.CeilToInt(crewCount / (float)crewCols);
+            float crewH = crewCount <= 0 ? 0f : lhMeta + 2f + crewRows * (CellH + 4f);
+
+            // ---- RIM-9 追加：实际产出列表
+            List<DelegationPreviewItem> goods = data.produced;
+            int goodsCount = goods?.Count ?? 0;
+            float goodsH = goodsCount <= 0 ? 0f : lhMeta + 2f + goodsCount * ItemRowH + 4f;
+
+            float contentH = lhTitle + 6f + summaryH + 12f
+                             + crewH + (crewH > 0f ? 10f : 0f)
+                             + goodsH + (goodsH > 0f ? 10f : 0f)
+                             + lhMeta + linesH + 20f;
 
             Rect view = new Rect(0f, 0f, w, Mathf.Max(contentH, inner.height));
             int depth = FlatScroll.Depth;
@@ -65,7 +93,49 @@ namespace RimDelegationRadiusUI
                 y += lhTitle + 6f;
                 RadiusFont.LabelAt(new Rect(0f, y, w, summaryH), summary,
                     RadiusFont.Scale.Body, Palette.Flat.InkMid, TextAnchor.UpperLeft, false, true);
-                y += summaryH + 10f;
+                y += summaryH + 12f;
+
+                // ---- 参与者：头像 + 名字（名字按格子宽度画，超宽自然被裁而不是叠到下一格）
+                if (crewCount > 0)
+                {
+                    RadiusFont.LabelAt(new Rect(0f, y, w, lhMeta), "RimDelegationReportCrew".Translate(),
+                        RadiusFont.Scale.Meta, Palette.Flat.InkMid, TextAnchor.MiddleLeft, false, false);
+                    y += lhMeta + 2f;
+                    for (int i = 0; i < crewCount; i++)
+                    {
+                        Pawn p = crew[i];
+                        int col = i % crewCols;
+                        int row = i / crewCols;
+                        float cx = col * CellW;
+                        float cy = y + row * (CellH + 4f);
+                        if (p == null)
+                        {
+                            continue;
+                        }
+                        Rect face = new Rect(cx, cy, IconSize, IconSize);
+                        GUI.DrawTexture(face, PortraitsCache.Get(p, new Vector2(IconSize, IconSize), Rot4.South));
+                        TooltipHandler.TipRegion(face, p.LabelShortCap);
+                        RadiusFont.LabelAt(new Rect(cx, cy + IconSize + 2f, CellW - 6f, 16f), p.LabelShortCap,
+                            RadiusFont.Scale.Meta, Palette.Flat.InkMid, TextAnchor.MiddleLeft, false, false);
+                    }
+                    y += crewRows * (CellH + 4f) + 10f;
+                }
+
+                // ---- 实际产出：图标 + 名称 + ×N 件 · kg · 约 X 银（行模型与主控台同一份）
+                if (goodsCount > 0)
+                {
+                    RadiusFont.LabelAt(new Rect(0f, y, w, lhMeta), "RimDelegationReportProduced".Translate(),
+                        RadiusFont.Scale.Meta, Palette.Flat.InkMid, TextAnchor.MiddleLeft, false, false);
+                    y += lhMeta + 2f;
+                    for (int i = 0; i < goodsCount; i++)
+                    {
+                        DelegationUIUtility.DrawItemRow(new Rect(0f, y, w, ItemRowH), goods[i], 20f, 18f, true);
+                        y += ItemRowH;
+                    }
+                    y += 4f + 10f;
+                }
+
+                // ---- 事件明细（可滚动）
                 RadiusFont.LabelAt(new Rect(0f, y, w, lhMeta),
                     n > 0
                         ? string.Format("RimDelegationReportEvents".Translate(), n)

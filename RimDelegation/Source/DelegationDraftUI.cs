@@ -252,10 +252,15 @@ namespace RimDelegation
             // RIM-5：满意度是这一趟"心情 + 效率"的唯一来源，草稿里必须摊开（口径标"预计"）
             Add(lines, DelegationUIUtility.SatisfactionLineEstimated(draft.mode, 0f), width);
 
+            // RIM-12（修 P-A3）：固定流程的耗时**必须算进"预计 X–Y 天完"**——
+            // 过去这一行完全不含那 3.5–7 小时，玩家点完「下达」会发现完成时间凭空往后跳。
+            // 口径与运行时的 `Delegation.EstimatedDaysLeft` 一致（都含固定流程、都乘冻结倍率）。
+            float fixedFlowHours = DelegationUIUtility.FixedFlowHours(draft.def, draft.site);
+            float fixedDays = fixedFlowHours / 24f;
             if (perDay > 0f)
             {
                 Add(lines, string.Format("预计 {0:0.#}–{1:0.#} 天{2}完（约 {3:0.#} {4}/天）",
-                    draft.dispMinCells / perDay, draft.dispMaxCells / perDay,
+                    fixedDays + draft.dispMinCells / perDay, fixedDays + draft.dispMaxCells / perDay,
                     worker.WorkVerb, perDay, worker.UnitName), width);
             }
             else
@@ -263,6 +268,12 @@ namespace RimDelegation
                 // 默认文案会把"清单还没掷"也归因成"缺人/缺模式"，所以先问 worker 要原因
                 Add(lines, worker.EstimateUnavailableReason(draft.site, draft.preview, draft.exactDeposit)
                     ?? "无法估算（模式或人员缺失）", width);
+            }
+            // 口径分裂的**明确解释**：单独给一行，让玩家看见"这 6 小时与人数/技能无关"
+            string fixedFlowLine = DelegationUIUtility.FixedFlowLine(draft.def, draft.site);
+            if (!fixedFlowLine.NullOrEmpty())
+            {
+                Add(lines, fixedFlowLine, width);
             }
 
             // 作战姿态的成算（如潜入暴露概率）—— 由 worker 提供，这里不耦合具体玩法

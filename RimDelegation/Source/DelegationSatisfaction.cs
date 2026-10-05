@@ -364,6 +364,210 @@ namespace RimDelegation
             }
         }
 
+        // ================================================================ 明细（悬浮情报用）
+
+        /// <summary>
+        /// 满意度的**一个来源**的明细 —— 给 UI 的悬浮情报用（"显示影响的因素"）。
+        /// 每一个字段都是**可显示的当前值**，不含任何计算。
+        /// </summary>
+        public class SatisfactionFactor
+        {
+            public DelegationSatisfactionSource source;
+
+            /// <summary>来源名（玩家词，如「最近一段时间的吃喝」）。</summary>
+            public string label;
+
+            /// <summary>当前是否生效（设置页与 Def 两处都开才算）。</summary>
+            public bool enabled;
+
+            /// <summary>玩家生效权重（**可为负**）。</summary>
+            public float weight;
+
+            /// <summary>子分 0..1（0.5 = 中性）。</summary>
+            public float value;
+
+            /// <summary>一句话细节：数据从哪来、当前是什么值。</summary>
+            public string detail;
+
+            /// <summary>这一行的显示文本（UI 直接画，不要再自己拼）。</summary>
+            public string Line()
+            {
+                string w = weight >= 0f ? weight.ToString("0.##") : weight.ToString("0.##");
+                string head = string.Format("· {0} {1}", label, value.ToStringPercent());
+                if (!enabled)
+                {
+                    return head + "（已关闭）";
+                }
+                return string.Format("{0}（权重 {1}）：{2}", head, w, detail);
+            }
+        }
+
+        /// <summary>四个来源的名字（玩家词）。与 <see cref="DelegationSatisfactionSource" /> 一一对应。</summary>
+        public static string LabelOf(DelegationSatisfactionSource source)
+        {
+            switch (source)
+            {
+                case DelegationSatisfactionSource.Difficulty: return "游戏难度";
+                case DelegationSatisfactionSource.TravelTime: return "远行时间";
+                case DelegationSatisfactionSource.WorkIntensity: return "作业强度";
+                default: return "最近一段时间的吃喝";
+            }
+        }
+
+        /// <summary>在途委派的四来源明细（UI 悬浮情报的**唯一来源**）。</summary>
+        public static List<SatisfactionFactor> Factors(Delegation d)
+        {
+            return new List<SatisfactionFactor>
+            {
+                MealFactor(d),
+                DifficultyFactor(),
+                TravelFactor(d?.DaysAway ?? 0f),
+                IntensityFactor(d?.mode),
+            };
+        }
+
+        /// <summary>草稿 / 前往中计划的四来源明细（吃喝与在外天数按调用方给的估计值）。</summary>
+        public static List<SatisfactionFactor> FactorsEstimated(DelegationModeDef mode, float daysAway)
+        {
+            SatisfactionFactor meals = MealFactor(null);
+            meals.detail = "草稿阶段还没有吃饭记录 ⇒ 按中性 0.5 计";
+            return new List<SatisfactionFactor>
+            {
+                meals,
+                DifficultyFactor(),
+                TravelFactor(daysAway),
+                IntensityFactor(mode),
+            };
+        }
+
+        /// <summary>明细的文本行（含汇总那一行），UI 直接逐行画。</summary>
+        public static List<string> FactorLines(Delegation d)
+        {
+            return Lines(Factors(d), d?.satisfaction ?? Neutral);
+        }
+
+        public static List<string> FactorLinesEstimated(DelegationModeDef mode, float daysAway)
+        {
+            float s = EstimatedValue(mode, daysAway);
+            return Lines(FactorsEstimated(mode, daysAway), s);
+        }
+
+        private static List<string> Lines(List<SatisfactionFactor> factors, float satisfaction)
+        {
+            List<string> lines = new List<string>();
+            for (int i = 0; i < factors.Count; i++)
+            {
+                lines.Add(factors[i].Line());
+            }
+            lines.Add(string.Format("→ 满意度 {0}（{1}）：每天心情 {2:+0.#;-0.#;0}，作业速率 ×{3:0.000}",
+                Mathf.Clamp01(satisfaction).ToStringPercent(),
+                StageLabel(satisfaction) ?? "—",
+                Mood(satisfaction),
+                RateFactor(satisfaction)));
+            return lines;
+        }
+
+        private static SatisfactionFactor MealFactor(Delegation d)
+        {
+            DelegationSatisfactionDef def = Def;
+            float days = def?.mealRecentDays ?? 3f;
+            SatisfactionFactor f = new SatisfactionFactor
+            {
+                source = DelegationSatisfactionSource.Meals,
+                label = LabelOf(DelegationSatisfactionSource.Meals),
+                enabled = SourceEnabled(DelegationSatisfactionSource.Meals),
+                weight = SourceWeight(DelegationSatisfactionSource.Meals),
+                value = MealValue(d),
+            };
+            int count = 0;
+            float moodSum = 0f;
+            if (d?.recentMeals != null)
+            {
+                int nowAbs = GenTicks.TicksAbs;
+                int window = (int)(days * Delegation.TicksPerHour * 24f);
+                for (int i = 0; i < d.recentMeals.Count; i++)
+                {
+                    DelegationMealRecord m = d.recentMeals[i];
+                    if (m == null || nowAbs - m.tickAbs > window)
+                    {
+                        continue;
+                    }
+                    moodSum += MealMoodOf(m.stage);
+                    count++;
+                }
+            }
+            f.detail = count == 0
+                ? string.Format("近 {0:0.#} 天没有吃饭记录 ⇒ 中性", days)
+                : string.Format("近 {0:0.#} 天 {1} 顿，平均 {2:+0.#;-0.#;0}（−2 干粮 … +4 很好）",
+                    days, count, moodSum / count);
+            return f;
+        }
+
+        private static SatisfactionFactor DifficultyFactor()
+        {
+            SatisfactionFactor f = new SatisfactionFactor
+            {
+                source = DelegationSatisfactionSource.Difficulty,
+                label = LabelOf(DelegationSatisfactionSource.Difficulty),
+                enabled = SourceEnabled(DelegationSatisfactionSource.Difficulty),
+                weight = SourceWeight(DelegationSatisfactionSource.Difficulty),
+                value = DifficultyValue(),
+            };
+            float offset = 0f;
+            string name = null;
+            try
+            {
+                offset = Find.Storyteller?.difficulty?.colonistMoodOffset ?? 0f;
+                // ⚠️ RIM-6/RIM-9 会话代修的一处编译阻断（CS1061）：`RimWorld.Difficulty` 上既没有
+                //    `label` 也没有 `def` —— 难度名在它**兄弟**字段 `Storyteller.difficultyDef`（`DifficultyDef.label`）上
+                //    （反射实测：`Difficulty` 只有一堆系数，`Storyteller` = def / difficultyDef / difficulty）。
+                name = Find.Storyteller?.difficultyDef?.label;
+            }
+            catch (Exception)
+            {
+                // 取不到就只报子分（与 DifficultyValue 的兜底一致）
+            }
+            f.detail = string.Format("{0}colonistMoodOffset {1:+0.#;-0.#;0}（和平 +10 … 冷酷 −10）",
+                name.NullOrEmpty() ? "" : name + "：", offset);
+            return f;
+        }
+
+        private static SatisfactionFactor TravelFactor(float daysAway)
+        {
+            DelegationSatisfactionDef def = Def;
+            float grace = def?.travelGraceDays ?? 1f;
+            float full = def?.travelFullPenaltyDays ?? 9f;
+            SatisfactionFactor f = new SatisfactionFactor
+            {
+                source = DelegationSatisfactionSource.TravelTime,
+                label = LabelOf(DelegationSatisfactionSource.TravelTime),
+                enabled = SourceEnabled(DelegationSatisfactionSource.TravelTime),
+                weight = SourceWeight(DelegationSatisfactionSource.TravelTime),
+                value = TravelValue(daysAway),
+            };
+            f.detail = daysAway <= grace
+                ? string.Format("在外 {0:0.#} 天（{1:0.#} 天宽限内 ⇒ 中性）", daysAway, grace)
+                : string.Format("在外 {0:0.#} 天：超过宽限 {1:0.#} 天后，再用 {2:0.#} 天线性掉到 0",
+                    daysAway, grace, full);
+            return f;
+        }
+
+        private static SatisfactionFactor IntensityFactor(DelegationModeDef mode)
+        {
+            SatisfactionFactor f = new SatisfactionFactor
+            {
+                source = DelegationSatisfactionSource.WorkIntensity,
+                label = LabelOf(DelegationSatisfactionSource.WorkIntensity),
+                enabled = SourceEnabled(DelegationSatisfactionSource.WorkIntensity),
+                weight = SourceWeight(DelegationSatisfactionSource.WorkIntensity),
+                value = IntensityValue(mode),
+            };
+            f.detail = mode == null
+                ? "还没选模式（按 0 计）"
+                : string.Format("{0}：作业强度 {1:+0.#;-0.#;0}", mode.LabelCap, mode.workIntensity);
+            return f;
+        }
+
         // ================================================================ 设置 / Def 取值
 
         private static RimDelegationSettings S => RimDelegationMod.Settings;

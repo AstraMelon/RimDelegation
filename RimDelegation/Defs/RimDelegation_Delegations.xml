@@ -232,6 +232,8 @@
     <!-- 多人时的"带队"口径（S14 用户要求：队伍超过 1 人时，"XXX 正在侦察环境…"看着像他一个人） -->
     <progressLabelGroup>正在带队侦察环境…</progressLabelGroup>
     <description>抵近观察：找个能下手的位置，看清守军与出入路线。</description>
+    <!-- RIM-13：换句间隔改成区间（原来每 0.5h 一句的整齐节拍，"太机械"是用户 S30 报的问题）。 -->
+    <ambientRerollHours>0.5~1.5</ambientRerollHours>
     <hours>1</hours>
     <!-- S22：这一段**不可被休息时段打断**（用户原话：「正在侦察环境的时候，不会因为时段进入了休息而打断」）
          —— 人已经摸到墙根了，停下来等天亮说不通。 -->
@@ -242,11 +244,22 @@
          （用户草图：「Aemeath（射击 无火 10）将带队侦察环境」）。
          ⚠️ 技能目前只决定"谁去做 + 怎么显示"，不决定耗时（耗时挂钩是下一期）。 -->
     <skillDef>Shooting</skillDef>
-    <!-- 阶段旁白（§19.29）：进行中从池里挑一条显示在流程块里，每 0.5h 换一条（换阶段必换）。
-         三个池的选法（S14）：**单人池 > 有敌情池 > 默认池**
-           · 默认池            = 多人 + 这个地方**没有守军**（`ItemStash` 主件 wantsThreatPoints=false 很常见）
-           · `ambientLinesSolo`    = 只有 1 个人时（"全队踩着…""有人说…"这种句子就不成立了）
-           · `ambientLinesHostile` = 真有守军时（判据 `ThreatAssessmentEntry.HasThreat`）
+    <!-- 阶段旁白（§19.29 / RIM-13+14）：进行中从池里挑一条显示在流程块里。
+         **换句节奏**由本段自己的 `ambientRerollHours` 决定（RIM-13 起是区间，本文件统一
+         `0.5~1.5` 小时：抽完重掷下次间隔，不再是整齐的半小时节拍）；换阶段必换。
+
+         **四个池现在是并集，不再短路**（RIM-13 拆掉了 S14 的"单人池 > 驮兽池 > 敌情池 > 默认池"）：
+           · `ambientLines`        = 基础池，不带任何标签（任何时刻都能说）
+           · `ambientLinesSolo`    = 隐式标签 `solo`（只有 1 个人时）
+           · `ambientLinesPacked`  = 隐式标签 `packed`（队伍带驮兽时）
+           · `ambientLinesHostile` = 隐式标签 `hostile`（该地点真有守军时，判据 `ThreatAssessmentEntry.HasThreat`）
+         四池合并成候选集，每一条各自过一遍 `DelegationAmbient.Matches`（标签 + 进度 + 当地小时
+         + 特质 + 全球事件 + 一次性）。所以"单人 + 有守军"现在**同时**能听到单人句与敌情句
+         —— 这正是"一个人去打有守军的矿点永远听不到敌情旁白"那个缺陷的修法。
+
+         行首可写方括号指令追加条件，例：`<li>[night,late|w=2] 天快亮了…</li>`；
+         完整语法表在 `Source/AmbientLine.cs` 的类注释里（唯一一份）。写错的标签会被
+         `ConfigErrors` 点名，并且那一条**永远不会出现**（不会静默说错话）。
          池里的 `{0}` 会替换成说话人的名字。 -->
     <ambientLines>
       <li>躲在暗处观察是否有奇怪的物体 —— 目前看到的最奇怪的东西是自己人。</li>
@@ -254,7 +267,7 @@
       <li>望远镜起了雾，用袖子擦了三遍，擦出了更大的雾。</li>
       <li>屏住呼吸听了十分钟，只听见肚子在叫。</li>
       <li>报告：屋里像是有人住过，也像是有东西在里面住过。</li>
-      <li>把侦察路线画在地图背面，然后忘了地图放哪儿了。</li>
+      <li>把侦察路线画在图纸背面，然后忘了图纸放哪儿了。</li>
       <li>确认了一件事：这里的门比殖民地的厨房门结实。</li>
       <li>绕了一圈没看到人影 —— 这地方安静得有点省事。</li>
     </ambientLines>
@@ -266,11 +279,18 @@
       <li>低声骂了句这地方太静，然后把路线记进脑子里。</li>
     </ambientLinesSolo>
     <ambientLinesHostile>
-      <li>记下了守军换岗的规律：每 40 分钟一次，而且每次都先去拿咖啡。</li>
+      <li>摸清了守军换岗的规律：间隔短得离谱，换下来的人还要先去吃点东西。</li>
       <li>压着声音回报：里面有岗哨，位置在门左侧。</li>
       <li>盯着那几个人看了很久，确认他们没有发现自己。</li>
-      <li>把守军的数量和站位都记在了地图背面。</li>
+      <li>把守军的数量和站位都记在随身的本子上。</li>
     </ambientLinesHostile>
+    <!-- 队伍**真有驮兽**时才用（判据 RaceProps.packAnimal） -->
+    <ambientLinesPacked>
+      <li>驮兽留在后面，拴在看不见的地方，免得它先被人发现。</li>
+      <li>押着驮兽不敢再往前，怕它一叫就把这一片都惊了。</li>
+      <li>驮兽低头啃草，{0} 只好一边看路一边看它。</li>
+      <li>驮兽背上还压着半车东西，真要跑起来可跑不快。</li>
+    </ambientLinesPacked>
   </RimDelegation.DelegationPhaseDef>
 
   <RimDelegation.DelegationPhaseDef>
@@ -280,6 +300,7 @@
     <!-- 多人时改口径（S14 用户原话：队伍超过 1 人时改成"XXX 正在带领远行队"） -->
     <progressLabelGroup>正在带领远行队移动…</progressLabelGroup>
     <description>从落脚点摸到藏匿处，含背负装备与搬运路线的铺垫。</description>
+    <ambientRerollHours>0.5~1.5</ambientRerollHours>
     <hours>2</hours>
     <!-- S22：见上（用户原话：「正在带领小队移动的时候，不会因为时段进入了休息而打断」） -->
     <uninterruptible>true</uninterruptible>
@@ -292,6 +313,9 @@
       <li>{0} 把路线念了三遍，最后一名队员还是在看自己的鞋。</li>
       <li>路过一片焦土，{0} 说这地方以前大概也有人这么想过。</li>
       <li>{0} 停下来系鞋带，全队跟着停，谁也没问为什么。</li>
+      <!-- RIM-14 条件层实例：`t=NaturalMood:2` = 队伍里有人是「乐天派」（degree 必须写，
+           否则四档心情特质会全部命中同一条）。验证办法：换一个有/没有一个乐天派的队伍，看它出不出现。 -->
+      <li>[t=NaturalMood:2] 有人一路都在说到了地方要怎么庆祝，没人搭话。</li>
     </ambientLines>
     <ambientLinesSolo>
       <li>{0} 一个人沿土脊走，尽量不踩出声响。</li>
@@ -306,6 +330,14 @@
       <li>驮兽走得比人稳，{0} 说这话的时候有点酸。</li>
       <li>驮兽停下来啃了口草，全队只好等着它。</li>
     </ambientLinesPacked>
+    <!-- 安全网：这条委派没有敌情岔路，但目标点**可能**有守军（`HasThreat`）⇒
+         真有守军时这几句才允许出现（标签写在行上，不是靠池名）。 -->
+    <ambientLinesHostile>
+      <li>贴着坡根走，宁可绕远，也不从他们看得见的那面过。</li>
+      <li>队伍拉成一列，谁都明白这时候不能出声。</li>
+      <li>远处有人影晃了一下，全队就地蹲下等了很久，最后发现是风刮的。</li>
+      <li>东西压在背上，走慢一点没关系，走响一声就麻烦了。</li>
+    </ambientLinesHostile>
   </RimDelegation.DelegationPhaseDef>
 
   <RimDelegation.DelegationPhaseDef>
@@ -314,6 +346,7 @@
     <progressLabel>正在破门…</progressLabel>
     <progressLabelGroup>正在带队破门…</progressLabelGroup>
     <description>撬开库房的门与锁，把能装车的物资清点出来。</description>
+    <ambientRerollHours>0.5~1.5</ambientRerollHours>
     <hours>1</hours>
     <!-- S22：见上（用户原话：「正在破门的时候，不会因为时段进入了休息而打断」）。
          走完这一段，小队才算进到里面 ⇒ 位置随之变成「藏匿点内部」。 -->
@@ -328,6 +361,10 @@
       <li>{0} 趴在门缝上往里看，说里面比外面黑，这不奇怪。</li>
       <li>{0} 建议直接拆墙，被全票否决（墙比门值钱）。</li>
       <li>{0} 数了三下才动手，其实是在数自己的心跳。</li>
+      <!-- RIM-14 条件层实例：`[early]` = 本段进度 < 34% 时才出现。
+           加它不只是为了好看 —— 条件层若一条都没用，就没有"可复现的验证入口"。
+           验证办法：破门段刚开始时看它出不出现，走到一半之后它就不该再出现。 -->
+      <li>[early] 撬棍才刚插进门缝，手上已经见了汗。</li>
     </ambientLines>
     <ambientLinesSolo>
       <li>一个人扛着撬棍，试了两次才找准发力点。</li>
@@ -340,6 +377,13 @@
       <li>{0} 从门缝里看了一眼岗哨的位置，才决定从哪下撬棍。</li>
       <li>门开了，{0} 先贴墙站定，确认没人看过来。</li>
     </ambientLinesHostile>
+    <!-- 队伍**真有驮兽**时才用（判据 RaceProps.packAnimal） -->
+    <ambientLinesPacked>
+      <li>驮兽进不了门，拴在院墙外，车等在路口。</li>
+      <li>门开了，驮兽还得原地等着，{0} 说这也是没办法的事。</li>
+      <li>驮兽把脑袋探进门里看了看，被推了回去。</li>
+      <li>撬门的时候驮兽在后面打了个响鼻，全队一起回头。</li>
+    </ambientLinesPacked>
   </RimDelegation.DelegationPhaseDef>
 
   <RimDelegation.DelegationPhaseDef>
@@ -348,7 +392,10 @@
     <progressLabel>正在撤离…</progressLabel>
     <progressLabelGroup>正在带领远行队撤离…</progressLabelGroup>
     <description>把物资捆扎上车、抹掉痕迹、退出这片区域。</description>
+    <ambientRerollHours>0.5~1.5</ambientRerollHours>
     <hours>2</hours>
+    <!-- RIM-11：撤离是"收摊走路"，受负重 / 地形 / 天色影响最自然 ⇒ 开工那一刻在 1.5–2.5h 之间掷一次 -->
+    <hoursJitter>0.5</hoursJitter>
     <afterWork>true</afterWork>
     <!-- S22：撤离 = 已经离开目标，位置回到「外围」 -->
     <squadPosition>外围</squadPosition>
@@ -368,6 +415,20 @@
       <li>{0} 抹掉了自己的脚印 —— 只有一个人的脚印，好抹。</li>
       <li>{0} 走得比来时快，箱子比来时沉。</li>
     </ambientLinesSolo>
+    <!-- 撤离时"背后有没有人追"是两种完全不同的走法 ⇒ 真有守军时才用这个池 -->
+    <ambientLinesHostile>
+      <li>身后没有动静，可谁也不愿意走在最后。</li>
+      <li>东西捆得死紧，真有人追出来也顾不上颠了。</li>
+      <li>回头看了两次，一个人影都没跟上来，反而更让人不放心。</li>
+      <li>沿着来时的道往后退，那口气谁都没松。</li>
+    </ambientLinesHostile>
+    <!-- 队伍**真有驮兽**时才用（判据 RaceProps.packAnimal） -->
+    <ambientLinesPacked>
+      <li>驮兽背上的箱子捆了两遍，走一段就得回头看一眼。</li>
+      <li>驮兽比人认得路，{0} 索性跟着它走。</li>
+      <li>驮兽走得慢，队伍只好压着步子等它。</li>
+      <li>车装得比来时满，驮兽的步子比来时沉。</li>
+    </ambientLinesPacked>
   </RimDelegation.DelegationPhaseDef>
 
   <!-- ============================================================
@@ -375,8 +436,15 @@
 
        两条岔路（用户 2026-09-27 拍板，甲B 方案）：
          · 无威胁：环境侦察 1h → 建立营地 0.5h → 开采 → 撤离 2h           （固定 3.5h）
-         · 有敌情：战术侦察 1h → 战斗评估 1h → 交战 1h → 建立营地 0.5h
-                   → 开采 → 撤离 2h                                        （固定 5.5h）
+         · 有敌情：战术侦察 1h → 战斗评估 1h → 交战 1h → 搜集战利品 0.5h
+                   → 建立营地 0.5h → 开采 → 撤离 2h                        （固定 6.0h）
+
+       ⚠️ RIM-11 修正：上面两个合计数是**机器复算过的**（`tools\Check-DefsXml.ps1` 会逐条重算并报警）。
+          改动之前这里写着"有敌情 5.5h（固定）" —— 那是 S30 插入「搜集战利品 0.5h」之后忘记改注释的
+          过期数字（插入后应为 6.0h）。
+          另外 RIM-10 的调研稿把这条记成 **7.0h**，那是**错的**：脚本按委派逐个复算，
+          这台机器上根本不存在 7.0h 的固定流程（三条有敌情路径全是 6.0h）。凡是"某个数字看起来
+          差了一截"的说法，先跑脚本对一遍再改注释 —— P-A2 这一处连审计稿本身都算错了。
 
        「有敌情」的判据是 `ThreatAssessmentEntry.HasThreat`（读存档里的 SitePartParams.threatPoints），
        在**开工那一刻冻结一次**（`DelegationFlow.Freeze`）—— 进度只记下标，
@@ -385,7 +453,12 @@
        ⚠️ 加流程 = 加时间：前置段期间 worker.Tick 完全不跑（WorldObjectComp_Delegations.cs:1043），
           并计入 ETA / 计划天数 / 超时 ⇒ 这两条流程直接推后整单工程。
 
-       「搜集战利品」段**留白**（用户明确：等模拟战斗的数据源一起定），所以有敌情那条现在是 5.5h。
+       「搜集战利品」段已实装（S30，插在交战段之后），上表已按实算更新 —— 有敌情那条现在是 6.0h。
+
+       ⚠️ RIM-11：三个「撤离」段的基准时长已统一成 **2h**（用户拍板 `3A`）——
+          过去 StashExtract 2h / MineExtract 2h / WorkExtract 1h，同一件事差一倍。
+          并给它们加了 `<hoursJitter>0.5</hoursJitter>`：开工那一刻在 1.5–2.5h 之间掷一次
+          （只抖「撤离」这一种收尾段；语义与取值范围见 `DelegationPhaseDef.hoursJitter` 的注释）。
        ============================================================ -->
 
   <RimDelegation.DelegationPhaseDef>
@@ -394,6 +467,7 @@
     <progressLabel>正在侦察环境中…</progressLabel>
     <progressLabelGroup>正在带队侦察环境…</progressLabelGroup>
     <description>在外围绕一圈：地形、能站人的坡、上得去的口子。</description>
+    <ambientRerollHours>0.5~1.5</ambientRerollHours>
     <hours>1</hours>
     <!-- S23：**只在这一带没有守军时**才走这一段（另一岔是"战术侦察"） -->
     <requireNoThreat>true</requireNoThreat>
@@ -407,6 +481,9 @@
       <li>几个能上去的坡口都记下了，其中一个塌得只剩半人宽。</li>
       <li>蹲在坡上看了很久，只有草在动，别的什么都不动。</li>
       <li>能看的都看过一遍，又从头看了一遍，就当是散步。</li>
+      <!-- RIM-14 条件层实例：`c=ColdSnap` = 世界上正在闹「寒流」（`Find.World.GameConditionManager`，
+           不需要地图 —— 委派全程不进图）。验证办法：开发者模式触发寒流，看它出不出现。 -->
+      <li>[c=ColdSnap] 风把坡上的草压平了，露在外面的手很快就没了知觉。</li>
     </ambientLines>
     <ambientLinesSolo>
       <li>一个人绕外围转一圈，坡缓水浅，没什么可藏的。</li>
@@ -420,6 +497,13 @@
       <li>该记的都记了：坡、沟、岩壁、能上去的口子，还有谁在里面。</li>
       <li>地形和人都看过了，剩下的事，回去再定。</li>
     </ambientLinesHostile>
+    <!-- 队伍**真有驮兽**时才用（判据 RaceProps.packAnimal） -->
+    <ambientLinesPacked>
+      <li>驮兽留在坡下，坑口那一段路它上不去。</li>
+      <li>牵着驮兽绕坡走，它比人还怕踩空。</li>
+      <li>驮兽低头去啃石缝里的草，{0} 拉了两下没拉动。</li>
+      <li>坡口太窄，驮兽只能等在下面，谁也没提这件事。</li>
+    </ambientLinesPacked>
   </RimDelegation.DelegationPhaseDef>
 
   <RimDelegation.DelegationPhaseDef>
@@ -428,6 +512,7 @@
     <progressLabel>正在观察守军…</progressLabel>
     <progressLabelGroup>正在带队观察守军…</progressLabelGroup>
     <description>抵近看清守军：岗哨位置、换岗规律、火力与退路。</description>
+    <ambientRerollHours>0.5~1.5</ambientRerollHours>
     <hours>1</hours>
     <requireThreat>true</requireThreat>
     <!-- S28：流程分组（作战任务 / 收集任务）。判据见 `DelegationPhaseDef.InCombatFlow` ——
@@ -437,20 +522,32 @@
     <uninterruptible>true</uninterruptible>
     <squadPosition>外围</squadPosition>
     <skillDef>Shooting</skillDef>
-    <!-- 这一段天然只在有守军时出现 ⇒ 默认池留空，正文写进 `ambientLinesHostile`
-         （选池顺序：单人 → 驮兽 → 有敌情 → 默认） -->
+    <!-- 这一段天然只在有守军时出现 ⇒ 正文主要写进 `ambientLinesHostile`；
+         默认池留作**兜底**（无论单人还是多人、进度早晚都不会说错的那种话）。 -->
+    <ambientLines>
+      <li>能看清的都看清了，剩下的只能靠猜。</li>
+      <li>看得越久，越觉得这地方不该硬来。</li>
+      <li>岗哨、坡口、退路在心里过了一遍，又过了一遍。</li>
+      <li>{0} 说再看一会儿就得走。</li>
+    </ambientLines>
     <ambientLinesHostile>
       <li>两个岗哨，一个在坑口边，一个在高处，视线正好交叉。</li>
       <li>我们离得远远的，远到只能看清人影，不敢再近一步。</li>
-      <li>等到换岗那阵松劲，才把人数数完，七个人，两个背着长家伙。</li>
+      <li>等到换岗那阵松劲才把人数数清，数得清，可没敢再数第二遍。</li>
       <li>高处那个哨位最麻烦，整片空地都在他眼里。</li>
       <li>退路记了两条，都通向东边的矮坡。</li>
     </ambientLinesHostile>
     <ambientLinesSolo>
-      <li>一个人盯两个岗哨，眼睛不太够用。</li>
+      <li>一个人盯两个岗哨，坑口那个最费眼神。</li>
       <li>换岗那阵松劲只有一小会儿，得掐着时候数人。</li>
       <li>记下哨位就不敢多待了，多待一刻就多一分险。</li>
     </ambientLinesSolo>
+    <!-- 队伍**真有驮兽**时才用（判据 RaceProps.packAnimal） -->
+    <ambientLinesPacked>
+      <li>驮兽只能留在更后面，缰绳交给最闲的那个人。</li>
+      <li>驮兽一低头草就响一声，{0} 的手一直按在它脖子上。</li>
+      <li>带着驮兽抵近侦察，本身就是件别扭的事。</li>
+    </ambientLinesPacked>
   </RimDelegation.DelegationPhaseDef>
 
   <RimDelegation.DelegationPhaseDef>
@@ -459,6 +556,7 @@
     <progressLabel>正在评估守军…</progressLabel>
     <progressLabelGroup>正在带队评估守军…</progressLabelGroup>
     <description>把人数、火力、退路摆在一起算一遍：这一仗值不值得打。</description>
+    <ambientRerollHours>0.5~1.5</ambientRerollHours>
     <hours>1</hours>
     <requireThreat>true</requireThreat>
     <flowCategory>Combat</flowCategory>
@@ -474,13 +572,25 @@
     <squadPosition>外围</squadPosition>
     <!-- 评估＝分析，原版研究/分析一类活都走智识 -->
     <skillDef>Intellectual</skillDef>
+    <ambientLines>
+      <li>人数、坡口、退路，来回摆了几遍，还是那几种结果。</li>
+      <li>算了半天，谁也说不清值不值，先把能准备的准备好。</li>
+      <li>能想到的都摆出来了，剩下的不由人算。</li>
+      <li>有人问打不打，没人接话 —— 大概都在心里算。</li>
+    </ambientLines>
     <ambientLinesHostile>
       <li>人数上我们不亏，火力上他们占着高处的便宜。</li>
       <li>正面压上去代价不小，绕后要多花半天，两边都不轻松。</li>
       <li>退路有两条，都不宽，撤的时候容易挤在一处。</li>
       <li>他们的掩体比我们多，可彼此离得远，能一个一个来。</li>
-      <li>结论是能打，只是打完得养几天，值不值另说。</li>
+      <li>结论是能打，只是打完得养几天，坑口那边拖不起。</li>
     </ambientLinesHostile>
+    <!-- 队伍**真有驮兽**时才用（判据 RaceProps.packAnimal） -->
+    <ambientLinesPacked>
+      <li>驮兽帮不上打仗的忙，可跑起来得靠它。</li>
+      <li>算账的时候把驮兽也算了进去：它驮得动，东西才搬得走。</li>
+      <li>{0} 去检查了一遍驮架，回来的时候评估还没算完。</li>
+    </ambientLinesPacked>
   </RimDelegation.DelegationPhaseDef>
 
   <RimDelegation.DelegationPhaseDef>
@@ -489,6 +599,7 @@
     <progressLabel>正在交火…</progressLabel>
     <progressLabelGroup>正在带队交火…</progressLabelGroup>
     <description>交火、压制、清点、包扎 —— 这一段的 1 小时是叙事耗时，胜负在进入这一段时就结算完了。</description>
+    <ambientRerollHours>0.5~1.5</ambientRerollHours>
     <hours>1</hours>
     <requireThreat>true</requireThreat>
     <flowCategory>Combat</flowCategory>
@@ -514,13 +625,25 @@
     <onEnter>
       <li Class="RimDelegation.DelegationEffectDef_ResolveCombat" />
     </onEnter>
+    <ambientLines>
+      <li>该做的都做了，接下来只是等。</li>
+      <li>{0} 把家伙又检查了一遍，其实刚才已经检查过了。</li>
+      <li>有人在低声说话，有人一句话都不说。</li>
+      <li>能蹲的地方都被蹲了，谁也没坐着。</li>
+    </ambientLines>
     <ambientLinesHostile>
-      <li>那段时间没人说得清，枪声起起落落，然后忽然就停了。</li>
+      <li>那段时间没人说得清，那边的动静起起落落，然后忽然就停了。</li>
       <li>中间有一阵很难熬，等烟吹散了，事情也就结束了。</li>
-      <li>再抬头的时候对面已经安静，我们这边有人按着胳膊。</li>
+      <li>再抬头的时候坑口那边已经安静，我们这边有人按着胳膊。</li>
       <li>那段时间很长，长到够包扎，也短到来不及害怕。</li>
-      <li>事后清点，弹药比预想的花得多，人都在，算是运气。</li>
+      <li>事后清点，带来的家伙打光了大半，人都在，算是运气。</li>
     </ambientLinesHostile>
+    <!-- 队伍**真有驮兽**时才用（判据 RaceProps.packAnimal） -->
+    <ambientLinesPacked>
+      <li>驮兽被牵到后面，缰绳拴紧，{0} 嘱咐了两遍别让它受惊。</li>
+      <li>驮兽比人先觉出不对，耳朵一直朝一个方向竖着。</li>
+      <li>动手之前最后一眼看的是驮兽 —— 它还站在原地，没跑。</li>
+    </ambientLinesPacked>
   </RimDelegation.DelegationPhaseDef>
 
   <RimDelegation.DelegationPhaseDef>
@@ -529,23 +652,42 @@
     <progressLabel>正在搜集战利品…</progressLabel>
     <progressLabelGroup>正在带队搜集战利品…</progressLabelGroup>
     <description>把打掉的守军身上还能用的东西清点、拆下来、捆上车。只算留在战场上的那些（跑掉的把东西带走了）。</description>
+    <ambientRerollHours>0.5~1.5</ambientRerollHours>
     <hours>0.5</hours>
     <!-- S30：用户 2026-09-28 拍板「搜集战利品」段**单开一段**、插在交战段之后、建立营地之前。
          只有真有守军的那条岔路才有这一段（没打过仗就没有战利品可捡）。 -->
     <requireThreat>true</requireThreat>
-    <!-- 与交战段同一条规矩（S26 立的）：结果等这一段走完再公布 -->
+    <!-- S28：显式归类 —— 这一段是**打完之后的搜刮**，归「收集任务」（原来没写，被推断成作战）。 -->
+    <flowCategory>Collect</flowCategory>
+    <!-- RIM-11：与交战段同一条规矩（S26 立的）：结果等这一段走完再公布 -->
     <deferNoteUntilDone>true</deferNoteUntilDone>
+    <!-- RIM-11：**显式写位置**（原来留空 ⇒ 靠"沿用上一段"得到交战段的「矿点」）。
+         沿用出来的值本来也对，但这一类"靠继承"的位置在段表顺序一变就会静默错位 ⇒ 写死。 -->
+    <squadPosition>矿点</squadPosition>
     <ambientLines>
-      <li>枪先卸弹匣，弹匣归一处，回头好数。</li>
-      <li>能用的都堆在一块：枪、甲，还有半袋没人认领的干粮。</li>
+      <li>先把家伙收拢到一处，散落的零碎也捡回来，回头好数。</li>
+      <li>能用的都堆在一块：家伙、甲，还有半袋没人认领的干粮。</li>
       <li>靴子也有人扒，走远路的人最懂靴子的价钱。</li>
-      <li>值钱的先上车，剩下的看载重说话。</li>
-      <li>连弹壳都收拾干净，免得留下痕迹。</li>
+      <li>值钱的先上车，坑口边上那堆零碎看载重再说。</li>
+      <li>连地上的碎屑都扫干净，免得留下痕迹。</li>
     </ambientLines>
     <ambientLinesSolo>
-      <li>一个人搬不动那么多，来回跑了几趟。</li>
-      <li>值钱的先挑出来，剩下的实在带不走。</li>
+      <li>一个人搬不动那么多，矿车来回推了好几趟。</li>
+      <li>值钱的先挑出来，剩下那些只能留在坑边。</li>
+      <li>一个人蹲在坑口挑拣，挑到后来手都懒得抬。</li>
     </ambientLinesSolo>
+    <!-- 打完之后还有没清干净的方向 ⇒ 真有守军时才说的几句 -->
+    <ambientLinesHostile>
+      <li>还有几个方向没敢过去，先在看得见的地方把东西收拢。</li>
+      <li>{0} 抬东西的时候一直盯着坑口，没敢背对着它。</li>
+      <li>拿家伙的和干活的身上东西不一样，还是分开堆好。</li>
+    </ambientLinesHostile>
+    <!-- 队伍**真有驮兽**时才用（判据 RaceProps.packAnimal） -->
+    <ambientLinesPacked>
+      <li>驮兽背上的箱子越摞越高，它已经在原地跺脚了。</li>
+      <li>驮兽只认路不认货，多塞一件它就慢一截。</li>
+      <li>{0} 把捆好的东西一件件往驮架上挂，挂完又数了一遍。</li>
+    </ambientLinesPacked>
     <onEnter>
       <li Class="RimDelegation.DelegationEffectDef_GainLoot" />
     </onEnter>
@@ -557,6 +699,7 @@
     <progressLabel>正在建立营地…</progressLabel>
     <progressLabelGroup>正在带队建立营地…</progressLabelGroup>
     <description>支帐篷、生火、清点补给、排轮班。等同于工作，照常消耗休息值。</description>
+    <ambientRerollHours>0.5~1.5</ambientRerollHours>
     <hours>0.5</hours>
     <!-- 两条岔路都有这一段（所以**不写**任何条件） -->
     <squadPosition>矿点营地</squadPosition>
@@ -570,6 +713,9 @@
       <li>先把水找着，别的都好说。</li>
       <li>帐篷朝哪边开有讲究，风从哪边来就往哪边背。</li>
       <li>东西各归各位，夜里伸手就能摸到要用的。</li>
+      <!-- RIM-14 条件层实例：`t=NaturalMood:-2` = 队伍里有人是「抑郁症」（degree 是负数也要照写）。
+           与上面那条「乐天派」配对，用来证明**分度**真的生效（不写 degree 的话两档人会命中同一句）。 -->
+      <li>[t=NaturalMood:-2] 有人坐在火边没说话，问什么都只说没事。</li>
     </ambientLines>
     <ambientLinesSolo>
       <li>一个人支帐篷，风一吹就歪，扶了三次才立住。</li>
@@ -581,6 +727,13 @@
       <li>帐篷不挨着摆，夜里真出事，不至于一起醒不过来。</li>
       <li>火堆离得远一点，烟散得快，免得招眼睛。</li>
     </ambientLinesHostile>
+    <!-- 队伍**真有驮兽**时才用（判据 RaceProps.packAnimal） -->
+    <ambientLinesPacked>
+      <li>驮兽卸了货就地打了个滚，背上磨红了一片。</li>
+      <li>先把驮架卸下来晾着，明天还要用。</li>
+      <li>驮兽吃饱了才肯安分，{0} 把最后一点草料给了它。</li>
+      <li>绳子解开一大堆，明天还得重新捆，谁都懒得想这事。</li>
+    </ambientLinesPacked>
   </RimDelegation.DelegationPhaseDef>
 
   <RimDelegation.DelegationPhaseDef>
@@ -589,7 +742,10 @@
     <progressLabel>正在撤离…</progressLabel>
     <progressLabelGroup>正在带领远行队撤离…</progressLabelGroup>
     <description>收起营地、装车、把痕迹压掉，退出这一带。</description>
+    <ambientRerollHours>0.5~1.5</ambientRerollHours>
     <hours>2</hours>
+    <!-- RIM-11：与另外两个「撤离」段同基准 2h（3A 统一）+ 同样的 ±0.5h 抖动 -->
+    <hoursJitter>0.5</hoursJitter>
     <afterWork>true</afterWork>
     <squadPosition>外围</squadPosition>
     <ambientLines>
@@ -598,12 +754,26 @@
       <li>走之前绕营地转了一圈，看看有没有落下的。</li>
       <li>车出坡口的时候，有人回头看了一眼那个坑。</li>
       <li>路照旧难走，但心里比来时轻，活算是干完了。</li>
+      <!-- RIM-14 条件层实例：`[late]` = 本段进度 > 80%。撤离段走到尾巴上才会出现。 -->
+      <li>[late] 车已经出了坡口，回头只剩一片被翻过的土。</li>
     </ambientLines>
     <ambientLinesSolo>
       <li>帐篷折起来比支起来快，一个人也能收拾利索。</li>
-      <li>装车时又数一遍，工具、绳子、剩下的口粮，都在。</li>
+      <li>没有第二只手帮着抬，一个人装车装到天黑。</li>
       <li>走之前回头看了一眼那个坑，然后就没再看。</li>
     </ambientLinesSolo>
+    <!-- 撤离时"背后有没有人追"是两种完全不同的走法 ⇒ 真有守军时才用这个池 -->
+    <ambientLinesHostile>
+      <li>身后一声也没有，队伍还是照原路退，不抄近道。</li>
+      <li>东西都在背上，真有人追出来，能扔的先扔。</li>
+      <li>回头看了两回，坡上还是那个坡，没有别的。</li>
+    </ambientLinesHostile>
+    <!-- 队伍**真有驮兽**时才用（判据 RaceProps.packAnimal） -->
+    <ambientLinesPacked>
+      <li>驮兽驮的东西比来时重，走两步就回头看一眼人。</li>
+      <li>驮兽的蹄子陷进松土里，走一段就要停下来歇。</li>
+      <li>捆驮架的时候发现少了一根绳，{0} 说算了，路上紧着点。</li>
+    </ambientLinesPacked>
   </RimDelegation.DelegationPhaseDef>
 
   <!-- ============ 工作站点（Ideology WorkSite_*）的流程段 ============
@@ -625,6 +795,7 @@
     <progressLabel>正在侦察营地外围…</progressLabel>
     <progressLabelGroup>正在带队侦察营地外围…</progressLabelGroup>
     <description>绕营地外围走一圈：出入口、围栏缺口、能俯瞰全营的高地。</description>
+    <ambientRerollHours>0.5~1.5</ambientRerollHours>
     <hours>1</hours>
     <!-- 只在**没有守军**时走这一段（工作站的威胁点数下限是 350，所以这一段几乎不出现；
          留着是为了"某个模组把威胁点数配成 0"时流程仍然成立）。 -->
@@ -649,6 +820,12 @@
       <li>看得见的都记下了，看不见的先记在心里。</li>
       <li>营地不小，堆场更大，回去再算。</li>
     </ambientLinesHostile>
+    <!-- 队伍**真有驮兽**时才用（判据 RaceProps.packAnimal） -->
+    <ambientLinesPacked>
+      <li>驮兽拴在营地外的林子边上，离围栏远远的。</li>
+      <li>牵着驮兽绕营地，它的蹄声比人的脚步响得多。</li>
+      <li>驮兽闻到圈里的气味，拽了两下，最后被硬拉着走了。</li>
+    </ambientLinesPacked>
   </RimDelegation.DelegationPhaseDef>
 
   <RimDelegation.DelegationPhaseDef>
@@ -657,14 +834,20 @@
     <progressLabel>正在观察营地守军…</progressLabel>
     <progressLabelGroup>正在带队观察营地守军…</progressLabelGroup>
     <description>抵近看清：几个岗哨、换岗规律、干活的人和拿家伙的人各有多少。</description>
+    <ambientRerollHours>0.5~1.5</ambientRerollHours>
     <hours>1</hours>
     <requireThreat>true</requireThreat>
     <flowCategory>Combat</flowCategory>
     <uninterruptible>true</uninterruptible>
     <squadPosition>外围</squadPosition>
     <skillDef>Shooting</skillDef>
-    <!-- 这一段天然只在有守军时出现 ⇒ 默认池留空，正文写进 ambientLinesHostile
-         （选池顺序：单人 → 驮兽 → 有敌情 → 默认） -->
+    <!-- 这一段天然只在有守军时出现 ⇒ 正文主要写进 ambientLinesHostile；
+         默认池留作**兜底**（无论单人还是多人、进度早晚都不会说错的那种话）。 -->
+    <ambientLines>
+      <li>看来看去，营地里最忙的始终是堆场那一角。</li>
+      <li>记下的东西够用了，再看就该被发现了。</li>
+      <li>{0} 示意再等一会儿，说还没看清谁在管事。</li>
+    </ambientLines>
     <ambientLinesHostile>
       <li>干活的人和拿家伙的人不是一批：多数人手里是斧子。</li>
       <li>两个岗哨，一个在门口，一个在堆场边，视线正好错开。</li>
@@ -673,10 +856,16 @@
       <li>退路记了两条，都通向外围的矮坡。</li>
     </ambientLinesHostile>
     <ambientLinesSolo>
-      <li>一个人盯两个岗哨，眼睛不太够用。</li>
+      <li>一个人要看两个方向，堆场边那个还得回头顾。</li>
       <li>数到一半有人朝这边看，只好先低下头。</li>
       <li>记完哨位就不敢多待了。</li>
     </ambientLinesSolo>
+    <!-- 队伍**真有驮兽**时才用（判据 RaceProps.packAnimal） -->
+    <ambientLinesPacked>
+      <li>驮兽留在林子边上，{0} 每隔一会儿就要回头看一眼它。</li>
+      <li>带着驮兽没法贴得太近，只能看得更远一点。</li>
+      <li>驮兽在远处打响鼻，声音传得比人想的远。</li>
+    </ambientLinesPacked>
   </RimDelegation.DelegationPhaseDef>
 
   <RimDelegation.DelegationPhaseDef>
@@ -685,6 +874,7 @@
     <progressLabel>正在评估守军…</progressLabel>
     <progressLabelGroup>正在带队评估守军…</progressLabelGroup>
     <description>把人数、火力、退路摆在一起算一遍：这一仗值不值得打。</description>
+    <ambientRerollHours>0.5~1.5</ambientRerollHours>
     <hours>1</hours>
     <requireThreat>true</requireThreat>
     <flowCategory>Combat</flowCategory>
@@ -694,12 +884,23 @@
     <uninterruptible>true</uninterruptible>
     <squadPosition>外围</squadPosition>
     <skillDef>Intellectual</skillDef>
+    <ambientLines>
+      <li>帐算了好几遍，每一遍的结论都比上一遍沉一点。</li>
+      <li>木料、人手、退路，摆在一起还是那几样，谁都看得出来。</li>
+      <li>有人问这仗值不值，真正的答案得等搬完才知道。</li>
+    </ambientLines>
     <ambientLinesHostile>
       <li>人数上我们不亏，可他们守着自己堆起来的木料，掩体比我们多。</li>
       <li>正面压进去代价不小，绕后要多花半天，两边都不轻松。</li>
       <li>他们拿家伙的只有一半，另一半大概会往屋里躲。</li>
-      <li>结论是能打，只是打完得养几天，值不值另说。</li>
+      <li>结论是能打，只是打完得养几天，这笔账划不划得来另说。</li>
     </ambientLinesHostile>
+    <!-- 队伍**真有驮兽**时才用（判据 RaceProps.packAnimal） -->
+    <ambientLinesPacked>
+      <li>驮兽能背多少，直接决定这仗打完能带回多少。</li>
+      <li>{0} 先去给驮兽喂了口水，回来接着听他们算。</li>
+      <li>算到后面，谁也说不清是来打仗的还是来搬东西的。</li>
+    </ambientLinesPacked>
   </RimDelegation.DelegationPhaseDef>
 
   <RimDelegation.DelegationPhaseDef>
@@ -708,6 +909,7 @@
     <progressLabel>正在交火…</progressLabel>
     <progressLabelGroup>正在带队交火…</progressLabelGroup>
     <description>交火、压制、清点、包扎：这一段的 1 小时是叙事耗时，胜负在进入这一段时就结算完了。</description>
+    <ambientRerollHours>0.5~1.5</ambientRerollHours>
     <hours>1</hours>
     <requireThreat>true</requireThreat>
     <flowCategory>Combat</flowCategory>
@@ -723,13 +925,24 @@
     <onEnter>
       <li Class="RimDelegation.DelegationEffectDef_ResolveCombat" />
     </onEnter>
+    <ambientLines>
+      <li>动手之前，堆场边的风比人声还清楚。</li>
+      <li>各就各位，剩下的不是谁说了算的。</li>
+      <li>{0} 把家伙攥紧了些，手心全是汗。</li>
+    </ambientLines>
     <ambientLinesHostile>
-      <li>那段时间没人说得清，枪声起起落落，然后忽然就停了。</li>
+      <li>那段时间没人说得清，营地里一阵乱响，然后忽然就停了。</li>
       <li>木料堆成了掩体，也成了靶子，两边都往那后面躲。</li>
-      <li>再抬头的时候对面已经安静，我们这边有人按着胳膊。</li>
+      <li>再抬头的时候木料堆后面没了动静，我们这边有人缠上了布。</li>
       <li>有人从屋里出来举手，被按住的时候还在说自己是干活的。</li>
-      <li>事后清点，弹药比预想的花得多，人都在，算是运气。</li>
+      <li>事后清点，能用的都差不多打光了，人都在，算是运气。</li>
     </ambientLinesHostile>
+    <!-- 队伍**真有驮兽**时才用（判据 RaceProps.packAnimal） -->
+    <ambientLinesPacked>
+      <li>驮兽被牵到营地外，{0} 蹲在它边上看着这边。</li>
+      <li>打起来的时候，后面那几头驮兽一直没叫，算是帮忙。</li>
+      <li>驮架卸下来放在地上，回来还得靠它装货。</li>
+    </ambientLinesPacked>
   </RimDelegation.DelegationPhaseDef>
 
   <RimDelegation.DelegationPhaseDef>
@@ -738,20 +951,38 @@
     <progressLabel>正在搜集战利品…</progressLabel>
     <progressLabelGroup>正在带队搜集战利品…</progressLabelGroup>
     <description>把打掉的守军身上还能用的东西清点、拆下来、捆上车。只算留在战场上的那些。</description>
+    <ambientRerollHours>0.5~1.5</ambientRerollHours>
     <hours>0.5</hours>
     <requireThreat>true</requireThreat>
-    <!-- 与交战段同一条规矩：结果等这一段走完再公布 -->
+    <!-- S28：显式归类 —— 这一段是**打完之后的搜刮**，归「收集任务」（原来没写，被推断成作战）。 -->
+    <flowCategory>Collect</flowCategory>
+    <!-- RIM-11：与交战段同一条规矩：结果等这一段走完再公布 -->
     <deferNoteUntilDone>true</deferNoteUntilDone>
+    <!-- RIM-11：显式写位置（原来留空 ⇒ 沿用交战段的「营地外围」；写死免得段表一变就静默错位） -->
+    <squadPosition>营地外围</squadPosition>
     <ambientLines>
-      <li>枪先卸弹匣，弹匣归一处，回头好数。</li>
+      <li>能用的家伙都收拢到一堆，坏的那些挑出来另放。</li>
       <li>干活的人身上没什么值钱的，拿家伙的身上倒是有。</li>
       <li>斧子和锯子也顺手收了，反正是能用的东西。</li>
-      <li>值钱的先上车，剩下的看载重说话。</li>
+      <li>值钱的先装车，剩下的看还能塞下多少。</li>
     </ambientLines>
     <ambientLinesSolo>
-      <li>一个人搬不动那么多，来回跑了几趟。</li>
-      <li>值钱的先挑出来，剩下的实在带不走。</li>
+      <li>一个人搬不动那么多，只好分几趟往车边挪。</li>
+      <li>值钱的先挑出来，剩下的只能堆回堆场。</li>
+      <li>一个人清点，报出来的数自己都记不住。</li>
     </ambientLinesSolo>
+    <!-- 打完之后还有屋子没清干净 ⇒ 真有守军时才说的几句 -->
+    <ambientLinesHostile>
+      <li>还有几间屋子没敢进，先在能看见的地方把东西收拢。</li>
+      <li>{0} 抬东西的时候一直盯着屋门，没敢背对着它。</li>
+      <li>拿家伙的和干活的分开堆，前者身上才有像样的东西。</li>
+    </ambientLinesHostile>
+    <!-- 队伍**真有驮兽**时才用（判据 RaceProps.packAnimal） -->
+    <ambientLinesPacked>
+      <li>{0} 把斧子锯子也捆上驮架，捆完拍了拍驮兽的脖子。</li>
+      <li>驮兽背上一半是木料，一半是别人家里的东西。</li>
+      <li>捆驮架的人换了两个，绳子还是没捆明白。</li>
+    </ambientLinesPacked>
     <onEnter>
       <li Class="RimDelegation.DelegationEffectDef_GainLoot" />
     </onEnter>
@@ -763,6 +994,7 @@
     <progressLabel>正在建立营地…</progressLabel>
     <progressLabelGroup>正在带队建立营地…</progressLabelGroup>
     <description>把临时营地扎在堆场边上：支帐篷、生火、清点补给、排轮班。等同于工作，照常消耗休息值。</description>
+    <ambientRerollHours>0.5~1.5</ambientRerollHours>
     <hours>0.5</hours>
     <!-- 两条岔路都有这一段（所以不写任何条件） -->
     <squadPosition>营地</squadPosition>
@@ -770,20 +1002,28 @@
     <ambientLines>
       <li>帐篷支在堆场的背风面，搬东西不用绕远。</li>
       <li>把他们码好的木料借来垫平地面，用完再还回去。</li>
-      <li>补给按天分好，那袋咸肉留到最后再动。</li>
-      <li>排了轮班，头一班归最不困的那个。</li>
-      <li>火生起来，水烧上，一天里总算有个像样的时刻。</li>
+      <li>补给按天分好，剩下几天吃什么心里都有数。</li>
+      <li>轮班排好，火边留一个人，其余的都去睡。</li>
+      <li>借他们的火塘烧了壶水，一天里总算有个像样的时刻。</li>
     </ambientLines>
     <ambientLinesSolo>
-      <li>一个人支帐篷，风一吹就歪，扶了三次才立住。</li>
-      <li>一个人坐着烤火，也算有个像样的时刻。</li>
-      <li>补给按天分好，就一袋咸肉，留到最后再动。</li>
+      <li>一个人支帐篷，借了他们的木料压住四角才算立稳。</li>
+      <li>一个人坐着烤火，火苗照着手心，也算缓过来一点。</li>
+      <li>一个人算补给，算来算去就剩那点干粮。</li>
     </ambientLinesSolo>
+    <!-- 这一段排在交战与搜刮之后（守军已清场）⇒ 写的是**战后**的收拾与警戒，
+         不再回头看他们的哨位。 -->
     <ambientLinesHostile>
-      <li>营地扎在背风又背人的一侧，火只在做饭的时候升。</li>
-      <li>帐篷不挨着摆，夜里真出事，不至于一起醒不过来。</li>
-      <li>把他们的哨位重新看了一遍，确认没有漏掉的。</li>
+      <li>营地扎在他们看不见的屋后，火只在做饭的时候升。</li>
+      <li>帐篷分摆两头，夜里真有人摸过来，不至于一起反应不及。</li>
+      <li>收拾出一块空地，把家伙都靠在伸手够得着的地方。</li>
     </ambientLinesHostile>
+    <!-- 队伍**真有驮兽**时才用（判据 RaceProps.packAnimal） -->
+    <ambientLinesPacked>
+      <li>驮兽卸了货就地卧下，赶都赶不起来。</li>
+      <li>把驮架靠在木料堆上，明天捆起来省事。</li>
+      <li>驮兽夜里比人警醒，有点动静它先站起来。</li>
+    </ambientLinesPacked>
   </RimDelegation.DelegationPhaseDef>
 
   <RimDelegation.DelegationPhaseDef>
@@ -792,20 +1032,36 @@
     <progressLabel>正在撤离…</progressLabel>
     <progressLabelGroup>正在带领远行队撤离…</progressLabelGroup>
     <description>收起帐篷、装车、把痕迹压掉，退出这一带。</description>
-    <hours>1</hours>
+    <ambientRerollHours>0.5~1.5</ambientRerollHours>
+    <!-- RIM-11（用户拍板 3A）：原来是 **1h**，而另外两个同名「撤离」段都是 2h —— 同一件事差一倍。
+         统一成 2h，并加与它们相同的 ±0.5h 随机偏移。 -->
+    <hours>2</hours>
+    <hoursJitter>0.5</hoursJitter>
     <afterWork>true</afterWork>
     <squadPosition>外围</squadPosition>
     <ambientLines>
-      <li>帐篷收了，火压灭，地上不留一点还热的东西。</li>
-      <li>装车的时候又数了一遍：工具、绳子、剩下的口粮，都在。</li>
-      <li>走之前绕营地转了一圈，看看有没有落下的。</li>
+      <li>帐篷收了，火压灭，走之前把灶灰也踩平了。</li>
+      <li>装车的时候又数了一遍，木料捆得实不实也挨个摸了摸。</li>
+      <li>走之前把堆场来回看了一遍，怕漏下成捆的料。</li>
       <li>车出营门的时候，有人回头看了一眼那堆没搬完的木料。</li>
     </ambientLines>
     <ambientLinesSolo>
-      <li>帐篷折起来比支起来快，一个人也能收拾利索。</li>
-      <li>装车时又数一遍，工具、绳子、剩下的口粮，都在。</li>
+      <li>帐篷折起来不费事，把料码回原样倒是费了点劲。</li>
+      <li>一个人装完车，坐在车辕上把绳子又紧了一遍。</li>
       <li>走之前回头看了一眼那堆木料，然后就没再看。</li>
     </ambientLinesSolo>
+    <!-- 撤离时"背后有没有人追"是两种完全不同的走法 ⇒ 真有守军时才用这个池 -->
+    <ambientLinesHostile>
+      <li>身后没人跟出来，队伍还是压着声音走。</li>
+      <li>背上的东西一件没丢，这一点比什么都强。</li>
+      <li>出了营门又回头看了一眼，围栏那边还是静的。</li>
+    </ambientLinesHostile>
+    <!-- 队伍**真有驮兽**时才用（判据 RaceProps.packAnimal） -->
+    <ambientLinesPacked>
+      <li>驮架捆了三道，驮兽走一段就停下来等人。</li>
+      <li>驮兽的蹄子陷进松土里，{0} 在前面拽着缰绳。</li>
+      <li>出营门的时候驮兽回头叫了一声，{0} 拉紧了缰绳。</li>
+    </ambientLinesPacked>
   </RimDelegation.DelegationPhaseDef>
 
   <!-- ============ 第一条委派：矿点开采 ============ -->
@@ -834,6 +1090,8 @@
     <minPawns>1</minPawns>
     <maxPawns>12</maxPawns>
     <skillDef>Mining</skillDef>
+    <!-- RIM-13：主作业段的换句间隔也改成区间（原来一直按 0.5h 一句，节奏太机械）。 -->
+    <workAmbientRerollHours>0.5~1.5</workAmbientRerollHours>
 
     <!-- 主作业段旁白（§19.29）：主作业**不是** flowPhases（它按速率推进、没有固定时长），
          所以它的旁白只能挂在委派 Def 上。挖矿是集体动作 ⇒ 说话人用"全队"。 -->
@@ -849,12 +1107,21 @@
       <li>提议休息，得到的回应是更响的敲击声。</li>
     </workAmbientLines>
     <!-- 休息时段（S16）：工时窗口之外把"休息"置顶显示，这几句就是"休息中的内容" -->
+    <!-- S16：工时窗口之外把"休息"置顶显示，这几句就是"休息中的内容"。
+         不带任何条件 = 任何时刻都能说；`[night]` = 只在夜里说；`{0}` = 说话人。 -->
     <restAmbientLines>
       <li>有人已经睡着了，鼾声比白天的镐声还规律。</li>
       <li>篝火边还在聊，话题从明天干什么飘到了从前干过什么。</li>
       <li>把外衣垫在头下，说这样比睡袋舒服。</li>
       <li>有人问了一句"明天几点起"，没人回答 —— 都睡了。</li>
       <li>睡前的闲聊慢慢变成了呼吸声。</li>
+      <li>[night] 火快灭了，值夜的人把炭拨到一堆，省着烧。</li>
+      <li>[night] 有人坐在石头上看星星，说这儿的星星比殖民地多。</li>
+      <li>[night] 夜里的风从坑口灌进来，裹紧毯子也听得见。</li>
+      <li>值夜的人把火拨了拨，又绕着营地走了一圈。</li>
+      <li>守下半夜的那个一直在往火里添柴，没让火暗下去。</li>
+      <li>{0} 翻了个身，嘟囔了一句谁也听不懂的话。</li>
+      <li>[night] 有人起来喝水，站了一会儿，又躺回去。</li>
     </restAmbientLines>
     <workAmbientLinesSolo>
       <li>{0} 一个人抡镐，石屑打在靴子上。</li>
@@ -951,6 +1218,7 @@
     <!-- 主作业段（= 装车）的旁白（§19.29）：物资点的主作业不是 flowPhases，
          前置"侦察/移动/破门"与收尾"撤离"的旁白在各自的 DelegationPhaseDef 上。 -->
     <workSpeakerMode>All</workSpeakerMode>
+    <workAmbientRerollHours>0.5~1.5</workAmbientRerollHours>
     <workAmbientLines>
       <li>已经算不清往返了几趟，但记得每一趟都更沉一点。</li>
       <li>把最值钱的那箱放在最上面，理由是这样最显眼。</li>
@@ -963,9 +1231,16 @@
     <restAmbientLines>
       <li>有人已经睡着了，鼾声比白天的装卸声还规律。</li>
       <li>帐篷里还在聊今天搬了多少箱，聊着聊着就变成了嘟囔。</li>
-      <li>{0} 把外套垫在头下，说这样比睡袋舒服。</li>
+      <li>{0} 把空箱子垫在头下，说比睡袋还平。</li>
       <li>有人问了一句"明天几点开工"，没人回答 —— 都睡了。</li>
-      <li>睡前的闲聊慢慢变成了呼吸声。</li>
+      <li>箱子码在边上当了挡风的墙，比帐篷还严实。</li>
+      <li>[night] 车上的箱子盖了块油布，夜里的露水重。</li>
+      <li>[night] 火快灭了，值夜的把剩下的柴都推进去。</li>
+      <li>[night] 有人靠着箱子睡，说这样至少不会滚下去。</li>
+      <li>守夜的人把火拨了拨，顺手把车上的绳子紧了紧。</li>
+      <li>守夜的那个一直没坐下，来回在车边踱。</li>
+      <li>{0} 半夜醒了，先摸了一遍身边的人还在不在。</li>
+      <li>[night] 有人在数剩下的口粮，数完没说结果。</li>
     </restAmbientLines>
     <workAmbientLinesSolo>
       <li>{0} 一个人来回搬，来回的次数自己都记不清了。</li>
@@ -1016,7 +1291,7 @@
     <maxDaysLimit>30</maxDaysLimit>
 
     <!-- 固定流程（§19.27）：前置「侦察1h→移动2h→破门1h」走完才开装车；
-         任何收工条件成立后再走收尾「撤离2h」才真正收工。合计 6 小时，与速率无关。 -->
+         任何收工条件成立后再走收尾「撤离」才真正收工。搜刮没有敌情岔路 ⇒ （固定 6.0h）。 -->
     <flowPhases>
       <li>RimDelegation_Phase_StashRecon</li>
       <li>RimDelegation_Phase_StashMove</li>
@@ -1056,7 +1331,7 @@
   <RimDelegation.DelegationApproachDef>
     <defName>RimDelegation_Approach_Assault</defName>
     <label>强攻</label>
-    <description>直接按无地图战斗结算：跑与「威胁评估」同一套 CombatScene，赢了才能接人。伤亡是真实的。</description>
+    <description>直接打进去：按「威胁评估」里那条预测的同一套算法结算，赢了才能接人。伤亡是真实的。</description>
     <stealth>false</stealth>
   </RimDelegation.DelegationApproachDef>
 
@@ -1107,6 +1382,7 @@
 
     <!-- 主作业段（= 潜入/强攻/抬人）的旁白（§19.29）。营救是人盯人的活 ⇒ 说话人随机挑一个参与者。 -->
     <workSpeakerMode>RandomPawn</workSpeakerMode>
+    <workAmbientRerollHours>0.5~1.5</workAmbientRerollHours>
     <workAmbientLines>
       <li>{0} 压低声音示意全队停下：前面就是守卫的视线边缘。</li>
       <li>炮塔转过去的那一刻，全队贴着墙根挪了三米。</li>
@@ -1122,7 +1398,14 @@
       <li>有人在低声商量明天怎么走，声音压得比白天还轻。</li>
       <li>{0} 靠着墙睡了，手里还攥着撬棍。</li>
       <li>有人问了一句"明天还从原路撤吗"，没人回答 —— 都睡了。</li>
-      <li>睡前的低声交谈慢慢变成了呼吸声。</li>
+      <li>墙根的风比野地里小，能睡着已经算运气。</li>
+      <li>[night] 夜里的光从破窗漏进来，值夜的人一直在数呼吸声。</li>
+      <li>[night] 冷得厉害，两个人靠着墙挤在一起才算暖。</li>
+      <li>[night] 星光照进牢房那半边，有人看了很久才闭眼。</li>
+      <li>守上半夜的那个一直没动，怕把人吵醒。</li>
+      <li>换班的时候两个人只对了个眼神，谁都没出声。</li>
+      <li>{0} 睡得很浅，一点动静就坐起来看一眼。</li>
+      <li>{0} 把毯子让出去一半，自己缩着睡。</li>
     </restAmbientLines>
     <!-- 囚犯营救的守卫 **100% 是炮塔**（`siteThreatChance = 1`）⇒ 默认池本来就是"有守军"语境，
          不需要 hostile 池；这里只补"一个人去"的版本。 -->
@@ -1211,6 +1494,7 @@
          所以"守卫/岗哨"那几句挪进 `workAmbientLinesHostile`（判据 `HasThreat`），
          默认池只留不管有没有敌人都成立的话。 -->
     <workSpeakerMode>RandomPawn</workSpeakerMode>
+    <workAmbientRerollHours>0.5~1.5</workAmbientRerollHours>
     <workAmbientLines>
       <li>伤员一直没出声，{0} 每隔一会儿就确认一下呼吸。</li>
       <li>简易担架是用门板和腰带现做的，能撑到车队就行。</li>
@@ -1224,7 +1508,14 @@
       <li>火堆压得很小，怕远处看见光。</li>
       <li>有人守着夜，也有人在半梦半醒之间数着还剩多少路。</li>
       <li>睡前那句"明天就能到家了"说得没什么底气。</li>
-      <li>睡前的低声交谈慢慢变成了呼吸声。</li>
+      <li>担架就放在旁边，谁翻身都先看一眼那边。</li>
+      <li>[night] 夜里的风一直没停，火苗压得只剩一点红。</li>
+      <li>[night] 有人醒了两次，每次都先去看伤员那边。</li>
+      <li>[night] 星子冻得发白，裹着毯子还是冷。</li>
+      <li>值夜的那个把火拨了拨，又添了一把干柴。</li>
+      <li>轮到守夜的人一直坐着，说躺下反而更容易睡过去。</li>
+      <li>{0} 把水壶放在手边，怕夜里伤员要喝。</li>
+      <li>有人把最厚的那件外衣盖在伤员身上，自己抱着膝盖睡。</li>
     </restAmbientLines>
     <workAmbientLinesHostile>
       <li>守卫比预想的少 —— 但这不表示可以松手。</li>
@@ -1324,6 +1615,7 @@
     <!-- 主作业段（= 搬空营地仓储）的旁白（§19.29）：主作业不是 flowPhases（它按速率推进、
          没有固定时长），所以它的旁白只能挂在委派 Def 上。搬东西是集体动作 ⇒ 说话人用"全队"。 -->
     <workSpeakerMode>All</workSpeakerMode>
+    <workAmbientRerollHours>0.5~1.5</workAmbientRerollHours>
     <workAmbientLines>
       <li>堆场看着不大，搬起来才知道码得有多实。</li>
       <li>已经把靠外的一排清干净了，里面那排还在。</li>
@@ -1339,7 +1631,7 @@
       <li>搬得快了些，谁都明白在这儿待久了不好。</li>
     </workAmbientLinesHostile>
     <workAmbientLinesSolo>
-      <li>{0} 一个人来回搬，来回的次数自己都记不清了。</li>
+      <li>{0} 一个人来回搬，成捆的料比箱子更难抱。</li>
       <li>没人搭手，{0} 把成捆的料一根根挪到车边。</li>
       <li>{0} 歇了一会儿，然后又抱起下一捆。</li>
       <li>一个人搬这些确实慢，但没人催。</li>
@@ -1347,13 +1639,21 @@
     <restAmbientLines>
       <li>有人已经睡着了，鼾声比白天的搬运声还规律。</li>
       <li>帐篷里还在聊今天搬了多少捆，聊着聊着就变成了嘟囔。</li>
-      <li>{0} 把外套垫在头下，说这样比睡袋舒服。</li>
-      <li>有人问了一句明天几点开工，没人回答，都睡了。</li>
-      <li>睡前的闲聊慢慢变成了呼吸声。</li>
+      <li>{0} 枕着一捆短木料睡，说这个高度正合适。</li>
+      <li>有人问了句明天能不能少搬两趟，谁也没接。</li>
+      <li>木料堆在帐篷外挡着风，夜里倒是不太冷。</li>
+      <li>[night] 值夜的人添了柴，火苗把帐篷顶照出一片红。</li>
+      <li>[night] 夜里的营地静得反常，谁都没睡实。</li>
+      <li>[night] 火只剩一点红，守夜的又架上一根柴。</li>
+      <li>轮到值夜的那个把火拨旺了些，又听了听堆场那边的动静。</li>
+      <li>守下半夜的始终没合眼，说总觉得堆场那边有影子。</li>
+      <li>{0} 靠着木料堆打盹，醒了就问一句时候到了没有。</li>
+      <li>有人把湿衣服搭在木料上，第二天早上准忘了收。</li>
     </restAmbientLines>
 
     <!-- 固定流程（见文件上方那七个段）：侦察/观察/评估/待命/交战/搜集/扎营走完才开搬，
-         收工条件成立后再走收尾"撤离"。 -->
+         收工条件成立后再走收尾"撤离"。
+         有敌情那条（固定 6.0h）；没有守军时只走「外围侦察 + 就地扎营 + 撤离」（固定 3.5h）。 -->
     <flowPhases>
       <li>RimDelegation_Phase_WorkScout</li>
       <li>RimDelegation_Phase_WorkObserve</li>

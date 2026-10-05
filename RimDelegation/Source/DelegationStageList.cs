@@ -102,8 +102,12 @@ namespace RimDelegation
         public float stallHoursLeft;
 
         // ---- 下面三个字段是"当前段的口径"，只给 DelegationAmbient.Tick 用，UI 不直接读
-        public List<string> pool;
-        public float rerollHours = DelegationAmbient.DefaultRerollHours;
+        /// <summary>候选池（RIM-13：四个池的并集，够不够格由 `DelegationAmbient.Matches` 按当下状况判）。</summary>
+        public List<AmbientLine> pool;
+        /// <summary>换句间隔的下界（小时，RIM-13 起是区间）。</summary>
+        public float rerollMinHours = DelegationAmbient.DefaultRerollHours;
+        /// <summary>换句间隔的上界（小时）。</summary>
+        public float rerollMaxHours = DelegationAmbient.DefaultRerollHours;
         public string speakerMode = "RandomPawn";
     }
 
@@ -180,51 +184,13 @@ namespace RimDelegation
         }
 
         /// <summary>
-        /// 按"几个人 + 有没有驮兽 + 这个地方有没有守军"选旁白池（S14）：
-        /// **单人池 &gt; 驮兽池 &gt; 有敌情池 &gt; 默认池**。
+        /// 按"几个人 + 有没有驮兽 + 这个地方有没有守军"选旁白池（S14）。
         ///
-        /// 顺序的理由：单人时"全队踩着…""有人说…"这类句子全都不能用（先把"人"说对）；
-        /// 驮兽是**画面里看得见**的东西，有它就优先说它；守军是"有没有这场戏"的问题，放最后。
-        /// 敌情判据用现成的 `ThreatAssessmentEntry.HasThreat`（读存档里的 `SitePartParams.threatPoints`，
-        /// 不需要生成地图，成本就是一个部件循环）。
+        /// RIM-13 **已删除短路优先级链**（原来"单人池 &gt; 驮兽池 &gt; 有敌情池 &gt; 默认池"，
+        /// 选中前面那个就再也不看后面 —— 于是"一个人去打有守军的矿点"永远听不到敌情句）。
+        /// 现在四个池**合并成候选集**，每一条各带自己的标签，由
+        /// <see cref="DelegationAmbient.Matches" /> 按当下状况判够不够格。
         /// </summary>
-        private static List<string> Pick(List<string> pool, List<string> solo, List<string> packed,
-            List<string> hostile, Delegation d, Site site)
-        {
-            if (d?.participants != null && d.participants.Count <= 1 && !solo.NullOrEmpty())
-            {
-                return solo;
-            }
-            if (HasPackAnimal(d) && !packed.NullOrEmpty())
-            {
-                return packed;
-            }
-            if (site != null && ThreatAssessmentEntry.HasThreat(site) && !hostile.NullOrEmpty())
-            {
-                return hostile;
-            }
-            return pool;
-        }
-
-        /// <summary>车队里有没有驮兽（`RaceProps.packAnimal` 的活体动物）—— 没有就别提驮兽。</summary>
-        private static bool HasPackAnimal(Delegation d)
-        {
-            List<Pawn> list = d?.caravan?.PawnsListForReading;
-            if (list == null)
-            {
-                return false;
-            }
-            for (int i = 0; i < list.Count; i++)
-            {
-                Pawn p = list[i];
-                if (p != null && !p.Dead && p.RaceProps != null && p.RaceProps.packAnimal)
-                {
-                    return true;
-                }
-            }
-            return false;
-        }
-
         /// <summary>这条委派当前该显示的阶段序列；null = 没有任何可显示的东西。</summary>
         public static List<DelegationStage> Build(Delegation d, Site site)
         {
@@ -234,6 +200,8 @@ namespace RimDelegation
             }
             DelegationFlow flow = DelegationFlow.For(d.def);
             DelegationFlowState st = d.flow;
+            // RIM-12：这一趟的固定段时长倍率（开工时冻结；老存档 = 1×）
+            float scale = DelegationFlow.ScaleOf(st);
             List<DelegationStage> list = new List<DelegationStage>();
 
             // ---- ① 前置段：只画到"当前段"为止（后面的阶段尚未发生，不剧透）
@@ -258,21 +226,22 @@ namespace RimDelegation
                 };
                 if (done)
                 {
-                    MarkDone(stage, phase.hours, phase.speakerMode, d);
+                    MarkDone(stage, st.HoursOf(phase, scale), phase.speakerMode, d);
                 }
                 else
                 {
                     float walked = st.phaseTicks / Delegation.TicksPerHour;
+                    float phaseHours = st.HoursOf(phase, scale);
                     stage.elapsedHours = walked;
-                    stage.totalHours = phase.hours;
+                    stage.totalHours = phaseHours;
                     stage.untouched = st.phaseTicks <= 0.001f;
                     stage.activeText = phase.ProgressLabelTextFor(GroupPhrase(phase, d));
-                    MarkActive(stage, phase.Ticks <= 0 ? 1f : Mathf.Clamp01(st.phaseTicks / phase.Ticks),
-                        Mathf.Max(0f, phase.hours - walked), d,
-                        string.Format("{0:0.#}h / {1:0.#}h", walked, phase.hours),
-                        Pick(phase.ambientLines, phase.ambientLinesSolo, phase.ambientLinesPacked,
-                            phase.ambientLinesHostile, d, site),
-                        phase.ambientRerollHours, EffectiveSpeakerMode(phase.speakerMode, d),
+                    MarkActive(stage, Mathf.Clamp01(st.phaseTicks / DelegationPhaseDef.TicksForHours(phaseHours)),
+                        Mathf.Max(0f, phaseHours - walked), d, site,
+                        string.Format("{0:0.#}h / {1:0.#}h", walked, phaseHours),
+                        phase.AmbientPool,
+                        phase.RerollMinHours, phase.RerollMaxHours,
+                        EffectiveSpeakerMode(phase.speakerMode, d),
                         phase.skillDef);
                 }
                 list.Add(stage);
@@ -308,11 +277,11 @@ namespace RimDelegation
                     float eta = DelegationUIUtility.EstimatedFinishDays(d, site) * 24f;
                     // 主作业段"还没开始"的判据是**自己的产出为 0**（`d.Progress`），不是 elapsedHours
                     work.untouched = d.Progress <= 0.001f;
-                    MarkActive(work, d.Progress, eta, d,
+                    MarkActive(work, d.Progress, eta, d, site,
                         string.Format("{0:0.#}/{1} {2}", d.cellsMined, d.totalCells, unit),
-                        Pick(d.def?.workAmbientLines, d.def?.workAmbientLinesSolo, d.def?.workAmbientLinesPacked,
-                            d.def?.workAmbientLinesHostile, d, site),
-                        d.def?.workAmbientRerollHours ?? DelegationAmbient.DefaultRerollHours,
+                        d.def?.WorkAmbientPool,
+                        d.def?.WorkRerollMinHours ?? DelegationAmbient.DefaultRerollHours,
+                        d.def?.WorkRerollMaxHours ?? DelegationAmbient.DefaultRerollHours,
                         speakerMode, null);
                 }
                 list.Add(work);
@@ -339,21 +308,22 @@ namespace RimDelegation
                     };
                     if (done)
                     {
-                        MarkDone(stage, phase.hours, phase.speakerMode, d);
+                        MarkDone(stage, st.HoursOf(phase, scale), phase.speakerMode, d);
                     }
                     else
                     {
                         float walked = st.phaseTicks / Delegation.TicksPerHour;
+                        float phaseHours = st.HoursOf(phase, scale);
                         stage.elapsedHours = walked;
-                        stage.totalHours = phase.hours;
+                        stage.totalHours = phaseHours;
                         stage.untouched = st.phaseTicks <= 0.001f;
                         stage.activeText = phase.ProgressLabelTextFor(GroupPhrase(phase, d));
-                        MarkActive(stage, phase.Ticks <= 0 ? 1f : Mathf.Clamp01(st.phaseTicks / phase.Ticks),
-                            Mathf.Max(0f, phase.hours - walked), d,
-                            string.Format("{0:0.#}h / {1:0.#}h", walked, phase.hours),
-                            Pick(phase.ambientLines, phase.ambientLinesSolo, phase.ambientLinesPacked,
-                                phase.ambientLinesHostile, d, site),
-                            phase.ambientRerollHours, EffectiveSpeakerMode(phase.speakerMode, d),
+                        MarkActive(stage, Mathf.Clamp01(st.phaseTicks / DelegationPhaseDef.TicksForHours(phaseHours)),
+                            Mathf.Max(0f, phaseHours - walked), d, site,
+                            string.Format("{0:0.#}h / {1:0.#}h", walked, phaseHours),
+                            phase.AmbientPool,
+                            phase.RerollMinHours, phase.RerollMaxHours,
+                            EffectiveSpeakerMode(phase.speakerMode, d),
                             phase.skillDef);
                     }
                     list.Add(stage);
@@ -700,8 +670,8 @@ namespace RimDelegation
                 DelegationAmbient.SpeakerName(d, stage.key, stage.speakerMode), hours);
         }
 
-        private static void MarkActive(DelegationStage stage, float frac, float etaHours, Delegation d,
-            string progressText, List<string> pool, float rerollHours, string speakerMode,
+        private static void MarkActive(DelegationStage stage, float frac, float etaHours, Delegation d, Site site,
+            string progressText, List<AmbientLine> pool, float rerollMinHours, float rerollMaxHours, string speakerMode,
             RimWorld.SkillDef skill = null)
         {
             stage.state = DelegationStageState.Active;
@@ -709,7 +679,8 @@ namespace RimDelegation
             stage.etaHours = etaHours;
             stage.progressText = progressText;
             stage.pool = pool;
-            stage.rerollHours = rerollHours <= 0f ? DelegationAmbient.DefaultRerollHours : rerollHours;
+            stage.rerollMinHours = rerollMinHours <= 0f ? DelegationAmbient.DefaultRerollHours : rerollMinHours;
+            stage.rerollMaxHours = rerollMaxHours <= 0f ? DelegationAmbient.DefaultRerollHours : rerollMaxHours;
             stage.speakerMode = speakerMode.NullOrEmpty() ? "RandomPawn" : speakerMode;
 
             // S22：配了技能的段 ⇒ 执行者 = **技能最高者**（用户要求"系统自动选择小人"），
@@ -723,8 +694,9 @@ namespace RimDelegation
 
             // S26：用户要求「暂时关闭一下流程的随机描述，有些不符合逻辑」⇒ 由 Mod 设置统一开关。
             // 关掉时**连掷定都不做**（不留"关了但存档里还在换"的痕迹）。
+            // RIM-13/14：选池与条件判据都在 `DelegationAmbient` 里（多标签并集 + 时机/说话人判据）。
             string line = DelegationUIUtility.AmbientEnabled
-                ? DelegationAmbient.Current(d, stage.key, pool)
+                ? DelegationAmbient.Current(d, site, stage.key, pool, stage.progress01, stage.executor)
                 : null;
             // 旁白里的 `{0}` = 说话人（"Chisa 正带队向 物品藏匿点 进发…"那种句子要用它）
             if (!line.NullOrEmpty() && !stage.speakerName.NullOrEmpty())

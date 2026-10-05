@@ -51,9 +51,19 @@ namespace RimDelegation
             listing.CheckboxLabeled("页签里「现场物资」默认展开（默认开）", ref Settings.stashItemsExpanded);
             listing.Label("关掉它 = 委派页签默认收起现场物资列表（原版与 RadiusUI 皮肤共用这一份设置）；空间不足时页签会自动折叠，与这里无关。");
             listing.GapLine();
-            // S26：用户口径「暂时关闭一下流程的随机描述，有些不符合逻辑」⇒ 默认关，想看时在这里开
-            listing.CheckboxLabeled("流程显示随机描述（旁白）（默认关）", ref Settings.flowAmbientEnabled);
-            listing.Label("勾上 = 流程块里显示阶段旁白与休息闲聊（每 0.5 小时换一条）。关掉时连掷定都不做。");
+            // S26：用户口径「暂时关闭一下流程的随机描述，有些不符合逻辑」⇒ 先关；
+            // RIM-16：机制根子修完，按 §七-10 拍板 `10A` **恢复默认开**。
+            listing.CheckboxLabeled("流程显示随机描述（旁白）（默认开）", ref Settings.flowAmbientEnabled);
+            listing.Label("勾上 = 流程块里显示阶段旁白与休息闲聊（RIM-13 起每段按自己配的节奏换，默认 0.5~1.5 小时随机）。关掉时连掷定都不做。");
+            listing.GapLine();
+            // RIM-12（用户拍板 2A + 12A + 甲）：固定流程段的全局时长倍率。
+            if (listing.ButtonTextLabeled("流程固定段时长倍率", Settings.FlowHoursScaleLabel()))
+            {
+                Settings.CycleFlowHoursScale();
+            }
+            listing.Label("　只影响**固定流程段**（侦察 / 移动 / 破门 / 交战 / 撤离…），不影响作业速率（那是满意度的事）。\n"
+                + "　档位：0.5× / 0.75× / 1× / 1.5× / 2×；1× = 与改动前逐字一致。\n"
+                + "　改动**只对之后新开工的委派生效**：已经在路上的那条按开工时冻结的值走到底，所以进度条不会跳变。");
             listing.GapLine();
             // S15：事件不再弹信（只进流程块 + 结束报告）；这个开关决定"结束那一刻要不要打断一下"。
             listing.CheckboxLabeled("委派结束时弹出签核报告（默认关）", ref Settings.reportOnComplete);

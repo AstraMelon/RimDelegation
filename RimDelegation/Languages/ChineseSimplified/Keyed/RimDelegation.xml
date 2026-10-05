@@ -87,5 +87,8 @@
   <RimDelegationReportEventsNone>事件明细</RimDelegationReportEventsNone>
   <RimDelegationReportNoEvents>期间没有发生随机事件。</RimDelegationReportNoEvents>
   <RimDelegationReportConfirm>确认</RimDelegationReportConfirm>
+  <!-- RIM-9 追加：报告里"参与人（含图标）"与"实际产出（含图标/数量/价值）"两个小节标题 -->
+  <RimDelegationReportCrew>参与人</RimDelegationReportCrew>
+  <RimDelegationReportProduced>实际产出</RimDelegationReportProduced>
 
 </LanguageData>

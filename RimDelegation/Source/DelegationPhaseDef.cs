@@ -22,6 +22,43 @@ namespace RimDelegation
         public float hours = 1f;
 
         /// <summary>
+        /// RIM-11：这一段时长的**随机偏移**（小时）。空 / `0` = 固定不变（与改动前逐字一致）。
+        ///
+        /// 用户 2026-10-05 提出的口径：「撤离时间是否可以随机，**一个固定值加减偏移值**」。
+        /// 写法就是"正数 = ±N"：`<hoursJitter>0.5</hoursJitter>` ⇒ 2h 那一段落在 1.5–2.5h。
+        ///
+        /// 掷定时机（**关键**）：`DelegationFlow.Freeze`（开工那一刻）掷一次，结果存进
+        /// `DelegationFlowState.jitteredHours`。绝不在读数时掷 —— `Ticks` 被 UI 每帧读，
+        /// 当场随机会变成"进度条每帧换个长度"。
+        ///
+        /// 落点（本机现值）：三个「撤离」段各 ±0.5h。理由 —— 撤离是"收摊走路"，
+        /// 受负重/地形/天色影响最自然，而且它是**收尾段**，抖动不会把 ETA 说成谎
+        /// （前置段抖动会让"预计完工时刻"在开工那一刻就不可信）。
+        /// 觉得太飘就把这一格删掉或写 `0`，那一秒起行为立刻回到固定值。
+        /// </summary>
+        public string hoursJitter;
+
+        /// <summary>偏移幅度（小时，≥0）。解析失败/未配 ⇒ 0 = 不抖。</summary>
+        public float JitterHours
+        {
+            get
+            {
+                if (hoursJitter.NullOrEmpty())
+                {
+                    return 0f;
+                }
+                float v;
+                if (!float.TryParse(hoursJitter.Trim().TrimStart('±', '+', '-'),
+                        System.Globalization.NumberStyles.Float,
+                        System.Globalization.CultureInfo.InvariantCulture, out v))
+                {
+                    return 0f;
+                }
+                return v < 0f ? 0f : v;
+            }
+        }
+
+        /// <summary>
         /// true = 收尾阶段（干完之后才走）。
         ///
         /// 为什么需要这条轴、而不是"全放在开工前"：物资点的「撤离」在叙事上必然发生在装车之后
@@ -71,8 +108,14 @@ namespace RimDelegation
         /// </summary>
         public string progressLabelGroup;
 
-        /// <summary>阶段内多久换一条旁白（小时）。≤0 = 用默认 0.5h。</summary>
-        public float ambientRerollHours = DelegationAmbient.DefaultRerollHours;
+        /// <summary>
+        /// 阶段内多久换一条旁白（小时）。空 = 默认 0.5h。
+        ///
+        /// RIM-13：从"一个固定数"升级成**区间** —— 写 `"0.5~1.5"` 时每次抽完重新掷下一次的间隔，
+        /// 换句节奏不再是整齐的半小时节拍（"太机械"是用户 S30 报的问题之一）。
+        /// 只写一个数（`"1"`）仍然等于"固定 1 小时"，与改动前逐字一致。
+        /// </summary>
+        public string ambientRerollHours;
 
         /// <summary>
         /// S22：这一段**不可被休息时段打断**（用户原话：「正在侦察环境的时候，不会因为时段进入了休息而打断」
@@ -203,6 +246,40 @@ namespace RimDelegation
             {
                 yield return "pauseUntilSignal 写成了空白 —— 会变成永远等不到的信号（流程卡死在该段之前）";
             }
+            // RIM-14：旁白行首指令写错时**必须报出来**。写错的后果是"这一句永远不出现"
+            // （未知标签一律判不成立），不报的话只会表现为"文案莫名少了"。
+            foreach (string e in AmbientConfigErrors(AmbientPool))
+            {
+                yield return e;
+            }
+        }
+
+        /// <summary>把池里所有解析失败的行报成一行（`defName` 前缀由 Def 系统自己加）。</summary>
+        internal static IEnumerable<string> AmbientConfigErrors(List<AmbientLine> pool)
+        {
+            if (pool == null)
+            {
+                yield break;
+            }
+            for (int i = 0; i < pool.Count; i++)
+            {
+                AmbientLine line = pool[i];
+                if (line != null && line.syntaxError != null)
+                {
+                    yield return string.Format("旁白池 {0} 第 {1} 条写法有误：{2}｜原文：{3}",
+                        line.sourceKey, line.indexInSource + 1, line.syntaxError,
+                        TrimForLog(line.text));
+                }
+            }
+        }
+
+        private static string TrimForLog(string s)
+        {
+            if (s == null)
+            {
+                return "";
+            }
+            return s.Length <= 40 ? s : s.Substring(0, 40) + "…";
         }
 
         /// <summary>
@@ -231,11 +308,82 @@ namespace RimDelegation
 
         /// <summary>（`doneLabel` 已在 S14 删除：完成行的文案改用段名 + 说话人 + 耗时，那个字段没地方显示。）</summary>
 
-        /// <summary>这一段的固定 tick 数（最小 1，避免 0 小时段落变成死循环）。</summary>
-        public int Ticks => hours <= 0f ? 1 : (int)(hours * Delegation.TicksPerHour + 0.5f);
+        /// <summary>这一段的固定 tick 数（最小 1，避免 0 小时段落变成死循环）。= 1× 倍率下的值。</summary>
+        public int Ticks => TicksWithScale(1f);
+
+        /// <summary>
+        /// RIM-12：按**开工时冻结的**时长倍率算这一段的生效小时数。
+        /// 传 ≤0 或 NaN 一律当 1×（与加倍率之前逐字一致）。
+        /// </summary>
+        public float EffectiveHours(float scale)
+        {
+            if (scale <= 0f || float.IsNaN(scale) || float.IsInfinity(scale))
+            {
+                return hours;
+            }
+            return hours * scale;
+        }
+
+        /// <summary>RIM-12：按冻结倍率算这一段的固定 tick 数（最小 1）。</summary>
+        public int TicksWithScale(float scale)
+        {
+            return TicksForHours(EffectiveHours(scale));
+        }
+
+        /// <summary>小时数 → ticks（最小 1；0 小时段落不会变成死循环）。</summary>
+        public static int TicksForHours(float hours)
+        {
+            return hours <= 0f ? 1 : (int)(hours * Delegation.TicksPerHour + 0.5f);
+        }
 
         /// <summary>显示用："1h" / "2.5h"（与 UI 的短句风格一致）。</summary>
         public string HoursLabel => hours.ToString("0.##") + "h";
+
+        // ── RIM-13 / RIM-14：旁白池 ─────────────────────────────────────────
+
+        /// <summary>四个池的解析缓存 + 并集（运行期，不进 XML、不进存档）。</summary>
+        private readonly AmbientPoolSet ambientPools = new AmbientPoolSet();
+
+        private float rerollMin = float.NaN;
+
+        private float rerollMax = float.NaN;
+
+        /// <summary>
+        /// 这一刻的**候选池** = 默认 + 单人 + 驮兽 + 敌情四个池的并集（RIM-13 的多标签并集）。
+        /// 条目各自带标签，够不够格由 `DelegationAmbient.Matches` 按当前状况判
+        /// —— 所以"一个人去打有守军的矿点"现在同时能听到单人句与敌情句。
+        /// </summary>
+        public List<AmbientLine> AmbientPool =>
+            ambientPools.Union("ambientLines", ambientLines, ambientLinesSolo, ambientLinesPacked, ambientLinesHostile);
+
+        /// <summary>换句间隔的下界（小时，已解析）。</summary>
+        public float RerollMinHours
+        {
+            get
+            {
+                EnsureReroll();
+                return rerollMin;
+            }
+        }
+
+        /// <summary>换句间隔的上界（小时，已解析）。</summary>
+        public float RerollMaxHours
+        {
+            get
+            {
+                EnsureReroll();
+                return rerollMax;
+            }
+        }
+
+        private void EnsureReroll()
+        {
+            if (!float.IsNaN(rerollMin))
+            {
+                return;
+            }
+            DelegationAmbient.ParseRerollRange(ambientRerollHours, out rerollMin, out rerollMax);
+        }
 
         public override void ResolveReferences()
         {
@@ -244,6 +392,8 @@ namespace RimDelegation
             {
                 hours = 0f;
             }
+            // RIM-13：热重载会把 `ambientRerollHours` 读成新值 ⇒ 丢掉上次解析出来的区间。
+            rerollMin = float.NaN;
         }
     }
 }

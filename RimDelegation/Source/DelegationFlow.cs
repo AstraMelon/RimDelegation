@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Text;
 using RimWorld.Planet;
+using UnityEngine;
 using Verse;
 
 namespace RimDelegation
@@ -39,6 +40,75 @@ namespace RimDelegation
 
         /// <summary>当前旁白在下标池里的下标。</summary>
         public int ambientVariant;
+
+        /// <summary>
+        /// RIM-13：当前旁白的**稳定 id**（`来源池#池内下标` 的 FNV-1a）。
+        ///
+        /// 为什么不再靠下标：候选集随情境变化（单人/驮兽/守军/时段/条件），同一个下标在不同情境下
+        /// 指向的不是同一句话；而且 RIM-14 给条目加了条件字段后，旧存档的下标语义已经失效。
+        /// 存 id 之后"读档换一句"只在**池内容真的变了**时才发生（找不到就重掷，不会越界、不会空指针）。
+        /// </summary>
+        public int ambientPickId;
+
+        /// <summary>RIM-13：下一次重掷还要等多少 ticks（区间间隔逐次掷定；0 = 下 tick 就重掷）。</summary>
+        public int ambientNextRerollTicks;
+
+        /// <summary>RIM-13：最近掷定过的几条（不重复窗口，最多 3 条，见 `MaxRecentWindow`）。</summary>
+        public List<int> ambientRecent;
+
+        /// <summary>RIM-14：`once` 标签的旁白已经说过的那些 id（每支委派各记一份）。</summary>
+        public List<int> ambientSeenOnce;
+
+        /// <summary>
+        /// RIM-12：**开工那一刻冻结**的"流程固定时长倍率"。
+        ///
+        /// 为什么冻结而不是实时读设置：`flow.phaseTicks` 是绝对进度，而 `DelegationPhaseDef.Ticks`
+        /// 若实时乘当前设置，玩家在委派进行中改一下倍率，条与文字会**在同一帧里跳变**
+        /// （用户拍板 `甲`：倍率只对**新开工**的委派生效）。
+        /// </summary>
+        public float flowHoursScale = 1f;
+
+        /// <summary>
+        /// RIM-11：**开工那一刻掷定**的"带抖动的段时长"（`hoursJitter` 的落点）。
+        ///
+        /// 存成"段名 → 小时数"两条平行列表（而不是按下标），因为段表本身可能被冻结过滤
+        /// （有敌情 / 无敌情两条岔路），按下标对不齐；按 defName 查也天然容忍"别的 mod 撤了一段"。
+        /// 空/null = 这一段没配抖动（老存档也是空 ⇒ 行为与改动前逐字一致）。
+        /// </summary>
+        public List<string> jitteredPhase;
+
+        /// <summary>见 <see cref="jitteredPhase" />：与它一一对应的**最终**小时数（已含倍率与偏移）。</summary>
+        public List<float> jitteredHours;
+
+        /// <summary>
+        /// RIM-11/12：这一段在**这一趟**里的实际小时数 = 开工时掷定的抖动值（若有），否则 `hours × 倍率`。
+        /// 显示（条/字/ETA）与实际推进（`AdvancePrelude`/`AdvanceSuffix`）都只能走这一个入口。
+        /// </summary>
+        public float HoursOf(DelegationPhaseDef phase, float scale)
+        {
+            if (phase == null)
+            {
+                return 0f;
+            }
+            if (jitteredPhase != null && jitteredHours != null)
+            {
+                int n = Mathf.Min(jitteredPhase.Count, jitteredHours.Count);
+                for (int i = 0; i < n; i++)
+                {
+                    if (jitteredPhase[i] == phase.defName)
+                    {
+                        return jitteredHours[i];
+                    }
+                }
+            }
+            return phase.EffectiveHours(scale);
+        }
+
+        /// <summary>见 <see cref="HoursOf" />：折算成 ticks（最小 1）。</summary>
+        public int TicksOf(DelegationPhaseDef phase, float scale)
+        {
+            return DelegationPhaseDef.TicksForHours(HoursOf(phase, scale));
+        }
 
         /// <summary>上一次掷定的时刻（用来算"每 0.5h 换一条"）。</summary>
         public int ambientPickedTick;
@@ -101,6 +171,13 @@ namespace RimDelegation
             Scribe_Values.Look(ref ambientStageKey, "roAmbientStageKey");
             Scribe_Values.Look(ref ambientVariant, "roAmbientVariant", 0);
             Scribe_Values.Look(ref ambientPickedTick, "roAmbientPickedTick", 0);
+            Scribe_Values.Look(ref ambientPickId, "roAmbientPickId", 0);
+            Scribe_Values.Look(ref ambientNextRerollTicks, "roAmbientNextReroll", 0);
+            Scribe_Collections.Look(ref ambientRecent, "roAmbientRecent", LookMode.Value);
+            Scribe_Collections.Look(ref ambientSeenOnce, "roAmbientSeenOnce", LookMode.Value);
+            Scribe_Values.Look(ref flowHoursScale, "roFlowHoursScale", 1f);
+            Scribe_Collections.Look(ref jitteredPhase, "roJitteredPhase", LookMode.Value);
+            Scribe_Collections.Look(ref jitteredHours, "roJitteredHours", LookMode.Value);
             Scribe_Collections.Look(ref activePrelude, "roActivePrelude", LookMode.Value);
             Scribe_Collections.Look(ref activeSuffix, "roActiveSuffix", LookMode.Value);
 
@@ -245,6 +322,16 @@ namespace RimDelegation
             bool hasThreat = ThreatAssessmentEntry.HasThreat(site);
             st.activePrelude = Names(f.prelude, hasThreat);
             st.activeSuffix = Names(f.suffix, hasThreat);
+            // RIM-12（用户拍板 `甲`）：时长倍率**在这里冻结一次**，与段表同一处、同一时刻。
+            // 冻结之后这一趟就按它走到底 —— 玩家中途改设置不会让进度条/文字跳变。
+            st.flowHoursScale = RimDelegationMod.Settings?.flowHoursScale ?? 1f;
+            if (st.flowHoursScale <= 0f || float.IsNaN(st.flowHoursScale) || float.IsInfinity(st.flowHoursScale))
+            {
+                st.flowHoursScale = 1f;
+            }
+            // RIM-11：段时长的**随机偏移**也在这里掷一次（用户口径「一个固定值加减偏移值」）。
+            // 掷定结果进存档 ⇒ 读档不重掷、UI 与推进同源。
+            FreezeJitter(def, st, f);
             DelegationUtility.LogVerbose(string.Format(
                 "冻结流程段：{0} @ {1}（有敌情={2}）⇒ 前置 {3} 段 / 收尾 {4} 段",
                 def.defName, site?.Label, hasThreat,
@@ -284,6 +371,171 @@ namespace RimDelegation
                 }
             }
             return names;
+        }
+
+        /// <summary>
+        /// RIM-12：这一趟的**流程时长倍率**（开工时冻结；没冻结过/写坏 ⇒ 1×）。
+        /// 老存档与"没有 flow 状态"的委派都退回 1×，行为与加倍率之前逐字一致。
+        /// </summary>
+        public static float ScaleOf(DelegationFlowState st)
+        {
+            if (st == null || st.flowHoursScale <= 0f || float.IsNaN(st.flowHoursScale)
+                || float.IsInfinity(st.flowHoursScale))
+            {
+                return 1f;
+            }
+            return st.flowHoursScale;
+        }
+
+        /// <summary>
+        /// RIM-12：按 Def 算"这条委派的**固定流程**一共多少小时"（前置 + 收尾，按敌情分支过滤）。
+        ///
+        /// 为什么必须单独有一个纯函数：草稿期**还没有** `Delegation` 实例，复用不了
+        /// <see cref="Delegation.FlowRemainingTicks" />；而草稿页那个"预计 X–Y 天完"过去
+        /// **完全不含**固定流程 ⇒ 玩家点完「下达」会发现完成时间凭空往后跳 3.5–7 小时（P-A3）。
+        /// 段名一并给出来，供草稿页那行玩家可见文案使用。
+        /// </summary>
+        public static float FixedFlowHours(DelegationDef def, Site site, float scale, out List<string> labels)
+        {
+            float min;
+            float max;
+            return FixedFlowHours(def, site, scale, out labels, out min, out max);
+        }
+
+        /// <summary>
+        /// RIM-11：同上，但额外给出**考虑随机偏移后的上下界**（草稿页那行据此显示"5.5~6.5 小时"）。
+        /// 上界只对配了 `hoursJitter` 的段展开 —— 没配抖动时 min == max == 合计。
+        /// </summary>
+        public static float FixedFlowHours(DelegationDef def, Site site, float scale, out List<string> labels,
+            out float minHours, out float maxHours)
+        {
+            labels = new List<string>();
+            minHours = 0f;
+            maxHours = 0f;
+            if (def == null)
+            {
+                return 0f;
+            }
+            DelegationFlow f = For(def);
+            if (!f.HasPhases)
+            {
+                return 0f;
+            }
+            bool hasThreat = ThreatAssessmentEntry.HasThreat(site);
+            float hours = 0f;
+            float minAcc = 0f;
+            float maxAcc = 0f;
+            Accumulate(f.prelude, hasThreat, scale, labels, ref hours, ref minAcc, ref maxAcc);
+            Accumulate(f.suffix, hasThreat, scale, labels, ref hours, ref minAcc, ref maxAcc);
+            minHours = minAcc;
+            maxHours = maxAcc;
+            return hours;
+        }
+
+        /// <summary>
+        /// RIM-11：把带 `hoursJitter` 的段在**开工那一刻**掷一次，结果冻进
+        /// <see cref="DelegationFlowState.jitteredHours" />（与段表、倍率同一处、同一时刻）。
+        ///
+        /// 掷法（brainstorm 定稿）：
+        ///   · 分布 = 均匀 `U(base − j, base + j)`；
+        ///   · **量化到 0.25 小时**（15 分钟）的网格 —— UI 只显示一位小数，不量化会写出
+        ///     "1.8347h" 这种既不可读、也让人误以为精确的小数；
+        ///   · 下限 0.25h（再短就不像"做了一件事"了）；
+        ///   · 只用**冻结后的段表**（不该给"这次根本不会走的段"掷骰子 —— 那会让读档日志里出现假信息）。
+        ///
+        /// 一个段都不带抖动 ⇒ **完全不写存档键**（老存档与默认配置的存档大小一字不变）。
+        /// </summary>
+        private static void FreezeJitter(DelegationDef def, DelegationFlowState st, DelegationFlow f)
+        {
+            List<DelegationPhaseDef> pre = st.activePrelude != null
+                ? DelegationFlowState.Resolve(st.activePrelude)
+                : f.prelude;
+            List<DelegationPhaseDef> suf = st.activeSuffix != null
+                ? DelegationFlowState.Resolve(st.activeSuffix)
+                : f.suffix;
+            List<string> names = null;
+            List<float> hours = null;
+            CollectJitter(pre, st.flowHoursScale, ref names, ref hours);
+            CollectJitter(suf, st.flowHoursScale, ref names, ref hours);
+            st.jitteredPhase = names;
+            st.jitteredHours = hours;
+            if (names != null)
+            {
+                DelegationUtility.LogVerbose(string.Format("冻结段时长抖动（{0} 段）：{1}",
+                    names.Count, string.Join(" / ", DescribeJitter(names, hours).ToArray())));
+            }
+        }
+
+        private static void CollectJitter(List<DelegationPhaseDef> src, float scale, ref List<string> names,
+            ref List<float> hours)
+        {
+            if (src.NullOrEmpty())
+            {
+                return;
+            }
+            for (int i = 0; i < src.Count; i++)
+            {
+                DelegationPhaseDef p = src[i];
+                if (p == null || p.JitterHours <= 0f)
+                {
+                    continue;
+                }
+                if (names == null)
+                {
+                    names = new List<string>();
+                    hours = new List<float>();
+                }
+                names.Add(p.defName);
+                hours.Add(RollJitteredHours(p.EffectiveHours(scale), p.JitterHours));
+            }
+        }
+
+        /// <summary>均匀取一个值、量化到 0.25h 网格、下限 0.25h（RIM-11 的掷法定稿）。</summary>
+        public static float RollJitteredHours(float baseHours, float jitter)
+        {
+            if (jitter <= 0f)
+            {
+                return baseHours;
+            }
+            float raw = Rand.Range(baseHours - jitter, baseHours + jitter);
+            float quantized = Mathf.Round(raw * 4f) / 4f;
+            return quantized < 0.25f ? 0.25f : quantized;
+        }
+
+        private static List<string> DescribeJitter(List<string> names, List<float> hours)
+        {
+            List<string> list = new List<string>();
+            for (int i = 0; i < names.Count && i < hours.Count; i++)
+            {
+                list.Add(string.Format("{0}={1:0.##}h", names[i], hours[i]));
+            }
+            return list;
+        }
+
+        private static void Accumulate(List<DelegationPhaseDef> src, bool hasThreat, float scale, List<string> labels,
+            ref float hours, ref float minHours, ref float maxHours)
+        {
+            if (src.NullOrEmpty())
+            {
+                return;
+            }
+            for (int i = 0; i < src.Count; i++)
+            {
+                DelegationPhaseDef p = src[i];
+                if (p == null || !p.Matches(hasThreat))
+                {
+                    continue;
+                }
+                float h = p.EffectiveHours(scale);
+                float j = p.JitterHours;
+                hours += h;
+                minHours += Mathf.Max(0.25f, h - j);
+                maxHours += h + j;
+                if (labels != null)
+                {
+                    labels.Add(p.PendingLabel);
+                }
+            }
         }
 
         // ── 推进 ────────────────────────────────────────────────────────────
@@ -328,7 +580,7 @@ namespace RimDelegation
                 {
                     return true;   // 前置"还没走完"：worker 不干活、UI 显示待命
                 }
-                int need = phase.Ticks;
+                int need = st.TicksOf(phase, st.flowHoursScale);
                 if (st.phaseTicks < need)
                 {
                     break;
@@ -360,7 +612,7 @@ namespace RimDelegation
             while (st.suffixIndex < suf.Count)
             {
                 DelegationPhaseDef phase = suf[st.suffixIndex];
-                int need = phase.Ticks;
+                int need = st.TicksOf(phase, st.flowHoursScale);
                 if (st.phaseTicks < need)
                 {
                     break;

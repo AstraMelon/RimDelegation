@@ -87,5 +87,8 @@
   <RimDelegationReportEventsNone>Event log</RimDelegationReportEventsNone>
   <RimDelegationReportNoEvents>No random events occurred meanwhile.</RimDelegationReportNoEvents>
   <RimDelegationReportConfirm>Confirm</RimDelegationReportConfirm>
+  <!-- RIM-9 addendum: the "crew (with icons)" and "delivered (icon / count / value)" section headers -->
+  <RimDelegationReportCrew>Crew</RimDelegationReportCrew>
+  <RimDelegationReportProduced>Delivered</RimDelegationReportProduced>
 
 </LanguageData>

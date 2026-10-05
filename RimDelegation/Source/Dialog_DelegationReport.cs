@@ -15,6 +15,21 @@ namespace RimDelegation
         public List<string> eventLines;
         public bool aborted;
 
+        /// <summary>
+        /// 参与者名单（RIM-9 追加，用户要求「需要具体显示：参与人（含图标）」）。
+        /// 存 `Pawn` 引用而不是名字：报告窗口是"收工那一刻"弹的，队员还在车队里 ⇒ 头像能取到；
+        /// 读档后从历史里翻出来的旧记录不经过这条路径（历史走 `DelegationRecord`），不会拿到死引用。
+        /// </summary>
+        public List<Pawn> participants;
+
+        /// <summary>
+        /// 本趟**实际产出**的逐行清单（RIM-9 追加，用户要求「具体产出（含图标，数量，价值）」）。
+        ///
+        /// 复用 <see cref="DelegationUIUtility.CleanupRows" /> 的行模型：它已经是"图标 + 名称 + ×N 件 · kg · 银"
+        /// 那一套，而且**与原版主控台/皮肤主控台同一份来源**（双端准则：文字一份、画法各自）。
+        /// </summary>
+        public List<DelegationPreviewItem> produced;
+
         /// <summary>从一条刚结束的委派上抓数据（只在 Complete / Abort 那一刻调）。</summary>
         public static DelegationReportData Build(Delegation d, Site site, string reason, bool aborted)
         {
@@ -29,6 +44,8 @@ namespace RimDelegation
                     d.def?.label ?? "?", site?.Label ?? "?"),
                 aborted = aborted,
                 eventLines = DelegationUIUtility.EventReportLines(d),
+                participants = d.participants == null ? new List<Pawn>() : new List<Pawn>(d.participants),
+                produced = DelegationUIUtility.CleanupRows(d),
             };
 
             StringBuilder sb = new StringBuilder();

@@ -161,8 +161,8 @@ namespace RimDelegation
         /// <summary>**队伍带驮兽**时主作业段的旁白池（S14，判据 `RaceProps.packAnimal`）。空 = 用 `workAmbientLines`。</summary>
         public List<string> workAmbientLinesPacked = new List<string>();
 
-        /// <summary>主作业段多久换一条旁白（小时）。≤0 = 默认 0.5h。</summary>
-        public float workAmbientRerollHours = DelegationAmbient.DefaultRerollHours;
+        /// <summary>主作业段多久换一条旁白（小时）。空 = 默认 0.5h。RIM-13 起支持区间（`"0.5~1.5"`）。</summary>
+        public string workAmbientRerollHours;
 
         /// <summary>主作业段的说话人模式（默认 `All`：挖矿/搬东西是集体动作，写"全队"最自然）。</summary>
         public string workSpeakerMode = "All";
@@ -183,6 +183,76 @@ namespace RimDelegation
 
         /// <summary>上面那份缓存的来源列表引用（引用一变就说明 Def 被重新解析过）。</summary>
         public List<DelegationPhaseDef> cachedFlowSource;
+
+        // ── RIM-13 / RIM-14：主作业段与休息段的旁白池（与 PhaseDef 同一套并集逻辑）────
+
+        /// <summary>主作业段四个池的解析缓存 + 并集。</summary>
+        private readonly AmbientPoolSet workAmbientPools = new AmbientPoolSet();
+
+        /// <summary>休息池的解析缓存。</summary>
+        private readonly AmbientPoolCache restAmbientCache = new AmbientPoolCache();
+
+        private float workRerollMin = float.NaN;
+
+        private float workRerollMax = float.NaN;
+
+        /// <summary>主作业段的候选池（默认 + 单人 + 驮兽 + 敌情 的并集，RIM-13）。</summary>
+        public List<AmbientLine> WorkAmbientPool => workAmbientPools.Union("workAmbientLines",
+            workAmbientLines, workAmbientLinesSolo, workAmbientLinesPacked, workAmbientLinesHostile);
+
+        /// <summary>休息池（S16）。RIM-14 起它同样支持行首指令（例如只让 `[night]` 的句子在夜里出现）。</summary>
+        public List<AmbientLine> RestAmbientPool
+        {
+            get
+            {
+                if (restAmbientLines.NullOrEmpty())
+                {
+                    return null;
+                }
+                if (!ReferenceEquals(restAmbientCache.source, restAmbientLines) || restAmbientCache.parsed == null)
+                {
+                    restAmbientCache.source = restAmbientLines;
+                    restAmbientCache.parsed = AmbientPoolSet.ParseAll(restAmbientLines, "restAmbientLines");
+                }
+                return restAmbientCache.parsed;
+            }
+        }
+
+        /// <summary>主作业段换句间隔的下界（小时，已解析）。</summary>
+        public float WorkRerollMinHours
+        {
+            get
+            {
+                EnsureWorkReroll();
+                return workRerollMin;
+            }
+        }
+
+        /// <summary>主作业段换句间隔的上界（小时，已解析）。</summary>
+        public float WorkRerollMaxHours
+        {
+            get
+            {
+                EnsureWorkReroll();
+                return workRerollMax;
+            }
+        }
+
+        private void EnsureWorkReroll()
+        {
+            if (!float.IsNaN(workRerollMin))
+            {
+                return;
+            }
+            DelegationAmbient.ParseRerollRange(workAmbientRerollHours, out workRerollMin, out workRerollMax);
+        }
+
+        public override void ResolveReferences()
+        {
+            base.ResolveReferences();
+            // RIM-13：热重载会读进新的 `workAmbientRerollHours` ⇒ 丢掉上次解析出来的区间。
+            workRerollMin = float.NaN;
+        }
 
         /// <summary>
         /// 「紧急加班」（§19.26）每次点击买到的**无视工时窗口**额度（小时）。
@@ -238,6 +308,15 @@ namespace RimDelegation
         public override IEnumerable<string> ConfigErrors()
         {
             foreach (string e in base.ConfigErrors())
+            {
+                yield return e;
+            }
+            // RIM-14：旁白行首指令写错 ⇒ 报出来（写错的后果是"这一句永远不出现"，不报只会表现为文案莫名变少）
+            foreach (string e in DelegationPhaseDef.AmbientConfigErrors(WorkAmbientPool))
+            {
+                yield return e;
+            }
+            foreach (string e in DelegationPhaseDef.AmbientConfigErrors(RestAmbientPool))
             {
                 yield return e;
             }

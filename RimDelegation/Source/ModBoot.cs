@@ -74,6 +74,7 @@ namespace RimDelegation
 
             CheckSiteComps();
             CheckOvertimeAndFlow();
+            CheckFlowNumbers();
             CheckS23Primitives();
             CheckS25FlowGates();
             CheckMainButton();
@@ -271,6 +272,104 @@ namespace RimDelegation
                               " —— 固定流程会被整体跳过。请检查 Defs/RimDelegation_Delegations.xml");
                 }
             }
+        }
+
+        /// <summary>
+        /// 启动自检（RIM-11）：**流程数值的合理性**——这是 ModBoot 里第一条查"数值对不对"
+        /// 而不是"东西在不在"的检查（其余全是静默失败检查）。
+        ///
+        ///   ① **同名段时长不一致**：三处「撤离」曾经 2h/2h/1h —— 同一件事差一倍，
+        ///      而 XML 里三个 defName 完全不同，靠肉眼读过一百遍也发现不了；
+        ///   ② **某个段所有池加起来只剩 ≤1 条**：症状是"这一段永远只念同一句话"，
+        ///      比"没有旁白"更像 bug（玩家会觉得随机描述坏了）。
+        ///
+        /// 对应脚本 = `tools\Check-DefsXml.ps1`（离线全量体检，含池条数 ≥3 与注释对账）。
+        /// 这里只做**最要命的两条**：启动横幅上看得见，且零成本。
+        /// </summary>
+        private static void CheckFlowNumbers()
+        {
+            List<DelegationPhaseDef> phases = DefDatabase<DelegationPhaseDef>.AllDefsListForReading;
+            if (phases.NullOrEmpty())
+            {
+                return;
+            }
+            for (int i = 0; i < phases.Count; i++)
+            {
+                DelegationPhaseDef a = phases[i];
+                if (a == null || a.label.NullOrEmpty())
+                {
+                    continue;
+                }
+                for (int j = i + 1; j < phases.Count; j++)
+                {
+                    DelegationPhaseDef b = phases[j];
+                    if (b == null || b.label != a.label)
+                    {
+                        continue;
+                    }
+                    if (Math.Abs(a.hours - b.hours) > 0.001f)
+                    {
+                        Log.Warning(string.Format(
+                            "[RimDelegation] 同名流程段「{0}」时长不一致：{1}={2}h / {3}={4}h" +
+                            " —— 同一件事在两条委派里耗时不同。请检查 Defs/RimDelegation_Delegations.xml",
+                            a.label, a.defName, a.hours, b.defName, b.hours));
+                    }
+                }
+
+                // 池条数：默认 + 单人 + 驮兽 + 敌情四个池加起来 ≤ 1 ⇒ 那一段永远只念一句
+                int total = CountPool(a.AmbientPool);
+                if (total <= 1)
+                {
+                    Log.Warning(string.Format(
+                        "[RimDelegation] 流程段「{0}」（{1}）的旁白池总共只有 {2} 条" +
+                        " —— 这一段会永远念同一句（或一句都没有）。补池见 tools\\Check-DefsXml.ps1 的 WARN 清单。",
+                        a.label, a.defName, total));
+                }
+            }
+
+            List<DelegationDef> defs = DefDatabase<DelegationDef>.AllDefsListForReading;
+            if (!defs.NullOrEmpty())
+            {
+                for (int i = 0; i < defs.Count; i++)
+                {
+                    DelegationDef def = defs[i];
+                    if (def == null)
+                    {
+                        continue;
+                    }
+                    int workTotal = CountPool(def.WorkAmbientPool);
+                    if (def.WorkAmbientPool != null && def.WorkAmbientPool.Count > 0 && workTotal <= 1)
+                    {
+                        Log.Warning(string.Format(
+                            "[RimDelegation] DelegationDef「{0}」的主作业旁白池只有 {1} 条 —— 作业期会一直念同一句。",
+                            def.defName, workTotal));
+                    }
+                    int restTotal = CountPool(def.RestAmbientPool);
+                    if (def.RestAmbientPool != null && def.RestAmbientPool.Count > 0 && restTotal <= 1)
+                    {
+                        Log.Warning(string.Format(
+                            "[RimDelegation] DelegationDef「{0}」的休息旁白池只有 {1} 条 —— 休息时会一直念同一句。",
+                            def.defName, restTotal));
+                    }
+                }
+            }
+        }
+
+        private static int CountPool(List<AmbientLine> pool)
+        {
+            if (pool.NullOrEmpty())
+            {
+                return 0;
+            }
+            int n = 0;
+            for (int i = 0; i < pool.Count; i++)
+            {
+                if (pool[i] != null && pool[i].syntaxError == null)
+                {
+                    n++;
+                }
+            }
+            return n;
         }
 
         /// <summary>

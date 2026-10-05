@@ -146,7 +146,7 @@ namespace RimDelegation
         /// 有些不符合逻辑」⇒ 开关放 Mod 设置、**默认关**；两端的旁白都只从这里取判据
         /// （`DelegationStageList` 的段旁白 + `StageRows` 的休息旁白），所以不会一半关一半不关。
         /// </summary>
-        public static bool AmbientEnabled => RimDelegationMod.Settings?.flowAmbientEnabled ?? false;
+        public static bool AmbientEnabled => RimDelegationMod.Settings?.flowAmbientEnabled ?? true;
 
         /// <summary>
         /// S26：执行者的**技能激情火苗**（用户：「双火/火/无火 是否可以添加图标」）。
@@ -397,7 +397,8 @@ namespace RimDelegation
                 float hours = d.mode?.HoursUntilStart(site.Tile, GenTicks.TicksAbs) ?? 0f;
                 restTitle = string.Format("休息中（距开工 {0:0.#} 小时）", hours);
                 restAmbient = AmbientEnabled
-                    ? DelegationAmbient.Current(d, "rest", d.def?.restAmbientLines)
+                    ? DelegationAmbient.Current(d, site, DelegationAmbient.RestKey, d.def?.RestAmbientPool, 0f,
+                        DelegationAmbient.PickPawn(d, DelegationAmbient.RestKey))
                     : null;
                 // 休息池里也允许写 `{0}`（说话人）—— 与阶段旁白同一个约定
                 if (!restAmbient.NullOrEmpty())
@@ -1125,6 +1126,53 @@ namespace RimDelegation
             return mood == 0f
                 ? "不受心情影响"
                 : string.Format("每天心情 {0:+0.#;-0.#}", mood);
+        }
+
+        /// <summary>
+        /// RIM-12：草稿页那一行「固定流程：侦察环境 + 移动到目标区域 + 破门 + 撤离 共 6 小时（与人数/技能无关）」。
+        ///
+        /// **文案与算法只有一份**（草稿页 + 皮肤草稿概览两份复制品都调这里）——
+        /// 这是本项目"双端准则"的老规矩：同一句话不许在两个画法里各写一遍。
+        /// 返回 null = 这条委派没有固定流程段（营救 / 救援），此时**不显示**这一行。
+        /// </summary>
+        public static string FixedFlowLine(DelegationDef def, Site site)
+        {
+            List<string> labels;
+            float min;
+            float max;
+            float hours = DelegationFlow.FixedFlowHours(def, site, FlowHoursScale, out labels, out min, out max);
+            if (hours <= 0f || labels.NullOrEmpty())
+            {
+                return null;
+            }
+            // RIM-11：有段配了随机偏移时，如实写区间（否则"约"字会把不确定性藏起来）
+            string amount = max > min + 0.01f
+                ? string.Format("{0:0.#}~{1:0.#} 小时", min, max)
+                : string.Format("共 {0:0.#} 小时", hours);
+            return string.Format("固定流程：{0} {1}（与人数/技能无关）",
+                string.Join(" + ", labels.ToArray()), amount);
+        }
+
+        /// <summary>RIM-12：这条委派固定流程一共多少小时（草稿页 ETA 要把它加进去，修 P-A3）。</summary>
+        public static float FixedFlowHours(DelegationDef def, Site site)
+        {
+            List<string> labels;
+            float min;
+            float max;
+            return DelegationFlow.FixedFlowHours(def, site, FlowHoursScale, out labels, out min, out max);
+        }
+
+        /// <summary>
+        /// RIM-12：玩家当前设置的流程时长倍率（开工时会被冻结进 `DelegationFlowState`；
+        /// 草稿期还没有委派实例 ⇒ 直接读设置，口径与"完工时刻"一致）。
+        /// </summary>
+        public static float FlowHoursScale
+        {
+            get
+            {
+                float v = RimDelegationMod.Settings?.flowHoursScale ?? 1f;
+                return v <= 0f || float.IsNaN(v) || float.IsInfinity(v) ? 1f : v;
+            }
         }
 
         /// <summary>
