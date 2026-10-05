@@ -3,7 +3,7 @@
 #
 # 工作区根下混放了多个互不相关的项目（DeniaApparel / DeniaHairstyle /
 # DeniaPupils / RimOre / 参考-* / _* 暂存目录 / dashi-taskboard 检出 …），
-# 因此这里用「白名单」方式：顶层全部忽略，只放行下面两个 mod 目录。
+# 因此这里用「白名单」方式：顶层全部忽略，只放行下面的 mod 目录。
 #
 # ⚠️ 因为顶层被 /* 忽略，`git clean -xdf` 会连工作区里所有未跟踪目录一起删掉。
 #    在本仓库里**永远不要**执行 git clean。
@@ -11,7 +11,8 @@
 /*
 !/.gitignore
 !/RimDelegation/
-!/RimDelegation-RadiusUI/
+# RIM-3 起皮肤已并入 RimDelegation\Source\Skin\（同一个 dll），
+# 顶层不再有 RimDelegation-RadiusUI 目录，故不再放行。
 
 # ── 编译中间产物（deploy.ps1 部署时同样排除这些）────────────────────────────
 # 产物本体是 Assemblies/*.dll，它已在白名单内、随源码一起提交。
