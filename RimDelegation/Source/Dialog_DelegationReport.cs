@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Text;
 using RimWorld.Planet;
+using RimDelegationRadiusUI;
 using UnityEngine;
 using Verse;
 
@@ -72,6 +73,13 @@ namespace RimDelegation
     ///
     /// 内容与信件**同一份来源**（`DelegationUIUtility.EventReportLines`）——
     /// 两处各写一份格式化，迟早出现"信里有、窗口里没有"。
+    ///
+    /// RIM-9（2026-10-05，用户原话「完成后的UI（图二）需要写RadiusUI」）：
+    ///   窗口底与正文都改走 Radius 画法 —— 窗口底复用主控台那个 `ConsoleWindowBridge`
+    ///   （同一个 `ConsoleWindowDrawing`，两窗口底完全同源），正文走 `ReportSkin.Draw`
+    ///   （与主控台右栏的**历史详情**同一份排版）。
+    ///   皮肤不可用（`ConsoleWindowBridge.Ready == false`）时**整窗落回原版画法**，
+    ///   与主控台同一条兜底路径 —— 界面绝不空窗。
     /// </summary>
     public class Dialog_DelegationReport : Window
     {
@@ -84,7 +92,9 @@ namespace RimDelegation
             forcePause = true;
             closeOnClickedOutside = false;
             doCloseX = true;
-            doCloseButton = true;
+            // RIM-9：底部那颗「确认」由皮肤自己画（Radius 按钮），所以关掉原版那两颗
+            // （原版 `doCloseButton` 画的是左下角那颗"关闭"，会和皮肤底栏打架）。
+            doCloseButton = false;
             absorbInputAroundWindow = true;
             onlyOneOfTypeAllowed = true;
             draggable = true;
@@ -97,15 +107,28 @@ namespace RimDelegation
             }
         }
 
-        public override Vector2 InitialSize => new Vector2(560f, 460f);
+        public override Vector2 InitialSize => new Vector2(640f, 520f);
 
         public override void DoWindowContents(Rect inRect)
         {
-            // 画法与主控台右栏的**历史详情共用** DelegationReportUI —— 两处各画一份迟早分叉
-            Rect content = new Rect(inRect.x, inRect.y, inRect.width, inRect.height - 46f);
-            DelegationReportUI.Draw(content, data, ref scroll);
+            // RIM-9：窗口底换成 Radius 的圆角面板（与主控台同一个 `ConsoleWindowDrawing`）。
+            // 换成原版的默认窗口底就是"内容半径化了、边框还是木头的"那种割裂感。
+            bool chrome = new ConsoleWindowBridge(this).InstallChrome();
 
-            // 签核：必须点这一颗（点外面关不掉）
+            Rect content = new Rect(inRect.x, inRect.y, inRect.width, inRect.height - 46f);
+            Rect bar = new Rect(inRect.x, inRect.yMax - 40f, inRect.width, 34f);
+            if (chrome)
+            {
+                ReportSkin.Draw(content, data, ref scroll);
+                if (ReportSkin.DrawConfirmBar(bar, "RimDelegationReportConfirm".Translate()))
+                {
+                    Close();
+                }
+                return;
+            }
+
+            // 皮肤不可用 ⇒ 与主控台同一条兜底：正文与按钮都回到原版画法
+            DelegationReportUI.Draw(content, data, ref scroll);
             if (Widgets.ButtonText(new Rect(inRect.xMax - 130f, inRect.yMax - 36f, 130f, 32f), "确认"))
             {
                 Close();

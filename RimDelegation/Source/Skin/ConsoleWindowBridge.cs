@@ -74,12 +74,17 @@ namespace RimDelegationRadiusUI
     }
 
     /// <summary>
-    /// `Window_Delegations` 的反射桥：只做一件事 —— 把窗口底换成 <see cref="ConsoleWindowDrawing" />。
+    /// **任意** <see cref="Window" /> 的反射桥：只做一件事 —— 把窗口底换成 <see cref="ConsoleWindowDrawing" />。
     ///
     /// RIM-3 之前它是"皮肤 mod"的桥，解析失败就当皮肤不存在；合并后主控台**默认就是皮肤画法**，
-    /// 所以语义变成"**主控台能否用皮肤的窗口底**"：
-    ///   · <see cref="Ready" /> = false ⇒ 皮肤整段不接管（<see cref="DelegationConsoleSkin.Draw" /> 返回 false）
-    ///     ⇒ 主控台走原版画法（连窗口底也是原版）。这是"界面绝不空窗"的最后一道，
+    /// 所以语义变成"**窗口能否用皮肤的窗口底**"：
+    ///   · 原本只服务于 `Window_Delegations`（主控台）；
+    ///   · RIM-9（2026-10-05）起 <see cref="Dialog_DelegationReport" />（收工签核窗口）也用它 ——
+    ///     两个窗口底完全同源，都是 `ConsoleWindowDrawing`，所以参数类型从 `Window_Delegations`
+    ///     放宽到 `Window`（`windowDrawing` 本来就是 `Verse.Window` 的字段，与具体窗口类无关）。
+    ///   · <see cref="Ready" /> = false ⇒ 皮肤整段不接管（主控台由 `DelegationConsoleSkin.Draw` 返回 false
+    ///     落回原版画法，签核窗口由 <see cref="Dialog_DelegationReport" /> 落回 `DelegationReportUI.Draw`）
+    ///     ⇒ 两个窗口走原版画法（连窗口底也是原版）。这是"界面绝不空窗"的最后一道，
     ///     而且是**启动时一次性判定**的，不会中途变。
     ///   · 反射成功、只是这一帧 SetValue 失败 ⇒ 只有窗口底是原版的，内容照旧由皮肤画。
     /// </summary>
@@ -88,9 +93,9 @@ namespace RimDelegationRadiusUI
         private static FieldInfo fieldDrawing;
         private static string resolveError = "未解析";
 
-        private readonly Window_Delegations win;
+        private readonly Window win;
 
-        public ConsoleWindowBridge(Window_Delegations win)
+        public ConsoleWindowBridge(Window win)
         {
             this.win = win;
         }

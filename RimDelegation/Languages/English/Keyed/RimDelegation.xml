@@ -61,7 +61,7 @@
   <RimDelegationTabOvertimeCancel>End overtime</RimDelegationTabOvertimeCancel>
 
   <!-- Delegation console (S8): the floating window opened by the bottom-bar "Delegations" button.
-       Tone (S8-c, user request): written for players, in a plain system register -- no developer voice. -->
+       Tone (S8-c, user request): written for players, in a plain system register — no developer voice. -->
   <RimDelegationConsoleTitle>Delegations ({0} active)</RimDelegationConsoleTitle>
   <RimDelegationConsoleTitleTip>The left column lists every delegation in progress. Select one to review its details and act on it. The window's position and size are retained.</RimDelegationConsoleTitleTip>
   <RimDelegationConsoleEmpty>No delegation is in progress.</RimDelegationConsoleEmpty>
@@ -80,5 +80,12 @@
   <RimDelegationConsoleSelection>{0} total · item {1}</RimDelegationConsoleSelection>
   <RimDelegationConsoleNoMatch>No delegation matches the filter. Adjust the search terms.</RimDelegationConsoleNoMatch>
   <RimDelegationConsoleHours>Worked {0:0.#} h · rested {1:0.#} h</RimDelegationConsoleHours>
+
+  <!-- Delegation report (RIM-9): the console's history detail and the sign-off window
+       share one layout, so these strings have a single source as well. -->
+  <RimDelegationReportEvents>Event log ({0})</RimDelegationReportEvents>
+  <RimDelegationReportEventsNone>Event log</RimDelegationReportEventsNone>
+  <RimDelegationReportNoEvents>No random events occurred meanwhile.</RimDelegationReportNoEvents>
+  <RimDelegationReportConfirm>Confirm</RimDelegationReportConfirm>
 
 </LanguageData>

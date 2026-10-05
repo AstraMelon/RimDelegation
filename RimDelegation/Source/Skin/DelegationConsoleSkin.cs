@@ -89,6 +89,12 @@ namespace RimDelegationRadiusUI
         /// <summary>S34：列头里图钉按钮的宽度（与 ＋/－ 同宽，紧挨在它**左边**）。</summary>
         private const float PinBtnW = 22f;
 
+        /// <summary>RIM-6：折叠开关（`＋/－`）的方块边长 —— 与 <see cref="PinBtnW" /> 同高，整组更紧凑。</summary>
+        private const float ColBtnW = 18f;
+
+        /// <summary>RIM-6：列头两颗按钮之间的间距，也是按钮组距列右边界的余量（旧版是贴边 2px）。</summary>
+        private const float BtnGap = 4f;
+
         // ── 状态（同一时刻只有一个主控台窗口）────────────────────────────────
         private static Window_Delegations owner;
 
@@ -1797,24 +1803,35 @@ namespace RimDelegationRadiusUI
         }
 
         /// <summary>
-        /// 一栏的列头控件：`＋/－`（折叠开关）+ 它**左边**的图钉（S34，用户原话：
+        /// 一栏的列头控件：折叠开关 + 它**左边**的图钉（S34，用户原话：
         /// 「上面折叠展开的+-号按钮左边添加一个图钉PIN按钮，点击后可以固定展开」）。
         ///
         /// 图钉语义 = 固定展开：钉住后这一栏不吃悬浮焦点的自动收起（见 <see cref="UpdateColumnFocus" />
         /// 与 `Draw` 里的 `!pinLeft`），生效的折叠态变成"永远展开"。
-        /// 为了不出现"钉住了却被 `－` 收起来"的矛盾，点 `－` ＝ 收起**并顺带拔钉**。
+        /// 为了不出现"钉住了却被收起来"的矛盾，点折叠开关 ＝ 收起**并顺带拔钉**。
         ///
-        /// 折叠成 26px 竖条时那一格放不下第二颗按钮 ⇒ 只画 `＋/－`；而"钉住的栏按定义就是展开的"
-        /// （钉住时会把 `collapsed` 清掉、且 `－` 会拔钉）⇒ 不存在"钉住了却看不到图钉、拔不掉"的死角。
+        /// 折叠成 26px 竖条时那一格放不下第二颗按钮 ⇒ 只画折叠开关；而"钉住的栏按定义就是展开的"
+        /// （钉住时会把 `collapsed` 清掉、且折叠开关会拔钉）⇒ 不存在"钉住了却看不到图钉、拔不掉"的死角。
+        ///
+        /// ⚠️ RIM-6（2026-10-05，用户报「上面添加了PIN按钮，但是折叠/展开按钮没了」）：
+        ///   旧版这里调 `UIKit.Button(rect, "－"/"＋", ButtonStyle.Ghost, …)` —— `Ghost` 档**不铺底**，
+        ///   于是那颗按钮的全部视觉都押在**全角 `－`(U+FF0D) / `＋`(U+FF0B)** 这两个字形上；
+        ///   实测两栏都只剩图钉、开关那一格是纯背景（IL 里按钮确实在画，见 RIM-6 议题的反汇编表）。
+        ///   ⇒ 改法（与图钉同源）：**底色 + 悬停 + 自绘几何字形 + `Widgets.ButtonInvisible`**，
+        ///   彻底不依赖字体覆盖；同时把这一组整体按 `BtnGap` 内收，不再让右边缘压在列边界（`col.xMax`）上。
         /// </summary>
         private static void DrawColumnToggle(Rect head, Rect col, string label, ref bool collapsed, ref bool pinned)
         {
             bool strip = collapsed && !pinned;   // 本帧实际显示为"收起"吗（图钉优先于 collapsed）
             bool roomForPin = col.width > StripW + 6f;
-            float btnX = col.xMax - 24f;
+
+            // RIM-6：整组内收 —— 旧版 `col.xMax - 24` + 宽 22 ⇒ 右边缘落在 `col.xMax - 2`，
+            // 贴边太紧；现在多留 `BtnGap`，且按钮改成 18×18 的方块，整组更紧凑也更好点。
+            float btnX = col.xMax - BtnGap - ColBtnW;
             if (roomForPin)
             {
-                Rect pinRect = new Rect(btnX - PinBtnW - 2f, head.y + 1f, PinBtnW, ColHeadH - 2f);
+                Rect pinRect = new Rect(btnX - PinBtnW - BtnGap, head.y + (ColHeadH - ColBtnW) * 0.5f,
+                    PinBtnW, ColBtnW);
                 if (DrawPinToggle(pinRect, label, pinned))
                 {
                     pinned = !pinned;
@@ -1823,13 +1840,11 @@ namespace RimDelegationRadiusUI
                         collapsed = false;   // 钉住 = 固定展开，顺手把它展开
                     }
                 }
-                btnX -= PinBtnW + 2f;
+                btnX -= PinBtnW + BtnGap;
             }
 
-            bool hit = UIKit.Button(new Rect(btnX, head.y + 1f, 22f, ColHeadH - 2f),
-                strip ? "＋" : "－", ButtonStyle.Ghost, true,
-                strip ? "展开" + label : (pinned ? "收起" + label + "（同时取消固定）" : "收起" + label));
-            if (hit)
+            if (DrawCollapseToggle(new Rect(btnX, head.y + (ColHeadH - ColBtnW) * 0.5f, ColBtnW, ColBtnW),
+                    label, strip, pinned))
             {
                 if (strip)
                 {
@@ -1838,16 +1853,40 @@ namespace RimDelegationRadiusUI
                 else
                 {
                     collapsed = true;
-                    pinned = false;   // 「－」说的就是收起：连图钉一起撤掉
+                    pinned = false;   // 收起说的就是收起：连图钉一起撤掉
                 }
             }
             // 折叠成竖条时那块只有 26px，写不下名字 ⇒ 只留按钮（tooltip 里已经说了是哪个区域）
             if (roomForPin)
             {
-                // 名字要给"图钉 + ＋/－"两颗按钮让位（58 = 24 + 2 + 22 + 左右各 5）
-                RadiusFont.LabelAt(new Rect(col.x + 6f, head.y, Mathf.Max(40f, col.width - 58f), ColHeadH),
+                // 名字要给"图钉 + 折叠开关"两颗按钮让位
+                float reserved = PinBtnW + BtnGap + ColBtnW + BtnGap + 16f;
+                RadiusFont.LabelAt(new Rect(col.x + 6f, head.y, Mathf.Max(40f, col.width - reserved), ColHeadH),
                     label, RadiusFont.Scale.Meta, Palette.Flat.InkLow, TextAnchor.MiddleLeft, false, false);
             }
+        }
+
+        /// <summary>
+        /// 折叠开关（RIM-6 起的画法）：底 + 悬停 + **自绘几何字形** + 收点击。
+        ///
+        /// 字形为什么自己画、不用 `RadiusIcon`：框架的图标集里**没有加减号**
+        /// （`Textures/RadiusUI/Action/` 只有 `DevPlus`/`ChevronDown`/`Strip` 等，已逐张看过），
+        /// 而 `＋/－` 这两个字形正是 RIM-6 的嫌疑点 —— 自绘两根 2px 的线最直接也最可控。
+        /// </summary>
+        private static bool DrawCollapseToggle(Rect r, string label, bool strip, bool pinned)
+        {
+            bool hover = Mouse.IsOver(r);
+            CardChrome.Rounded(r, Palette.Surface2, 6f);
+            if (hover)
+            {
+                CardChrome.Hover(r, 6f);
+            }
+            RadiusFont.LabelAt(r, strip ? "＋" : "－", RadiusFont.Scale.Section,
+                hover ? Palette.Ink : Palette.TextDim, TextAnchor.MiddleCenter, false, false);
+            TooltipHandler.TipRegion(r, strip
+                ? "展开" + label
+                : (pinned ? "收起" + label + "（同时取消固定）" : "收起" + label));
+            return Widgets.ButtonInvisible(r, true);
         }
 
         /// <summary>
@@ -3610,69 +3649,14 @@ namespace RimDelegationRadiusUI
         /// <summary>
         /// 皮肤版的**历史报告**（S15 第二期）：数据与签核窗口同一份（`DelegationRecord.ToReportData`），
         /// 画法用 RadiusFont / Palette。只读视图 ⇒ 单趟直接画、自带滚动，不参与主列的两趟测高。
+        ///
+        /// RIM-9（2026-10-05）起**正文画法整个搬到** <see cref="ReportSkin.Draw"/> ——
+        /// 因为收工签核窗口（`Dialog_DelegationReport`）也要同一份排版，
+        /// 留在这里就会出现"历史里一种排法、签核窗口里另一种"的老毛病。这里只剩转交。
         /// </summary>
         private static void RecordMain(Rect r)
         {
-            DelegationReportData data = selectedRecord.ToReportData();
-            Rect inner = r.ContractedBy(10f);
-            float w = Mathf.Max(80f, inner.width - 16f);
-            float lhTitle = RadiusFont.LineHAt(RadiusFont.Scale.Title, true);
-            float lhBody = RadiusFont.LineHAt(RadiusFont.Scale.Body, false);
-            float lhMeta = RadiusFont.LineHAt(RadiusFont.Scale.Meta, false);
-
-            string summary = data.summary ?? "";
-            float summaryH = Mathf.Max(lhBody, RadiusFont.HeightAt(summary, w, RadiusFont.Scale.Body, false));
-            List<string> lines = data.eventLines;
-            int n = lines?.Count ?? 0;
-            float linesH = 0f;
-            for (int i = 0; i < n; i++)
-            {
-                linesH += Mathf.Max(lhMeta, RadiusFont.HeightAt(lines[i], w, RadiusFont.Scale.Meta, false));
-            }
-            float contentH = lhTitle + 6f + summaryH + 10f + lhMeta + linesH + 20f;
-
-            Rect view = new Rect(0f, 0f, w, Mathf.Max(contentH, inner.height));
-            int depth = FlatScroll.Depth;
-            bool opened = false;
-            try
-            {
-                FlatScroll.Begin(inner, ref recordScroll, view);
-                opened = true;
-                float y = 0f;
-                RadiusFont.LabelAt(new Rect(0f, y, w, lhTitle), data.title ?? "委派报告",
-                    RadiusFont.Scale.Title, data.aborted ? Palette.Warn : Palette.Flat.Ink,
-                    TextAnchor.MiddleLeft, true, false);
-                y += lhTitle + 6f;
-                RadiusFont.LabelAt(new Rect(0f, y, w, summaryH), summary,
-                    RadiusFont.Scale.Body, Palette.Flat.InkMid, TextAnchor.UpperLeft, false, true);
-                y += summaryH + 10f;
-                RadiusFont.LabelAt(new Rect(0f, y, w, lhMeta),
-                    n > 0 ? string.Format("事件明细（{0} 条）", n) : "事件明细",
-                    RadiusFont.Scale.Meta, Palette.Flat.InkMid, TextAnchor.MiddleLeft, false, false);
-                y += lhMeta;
-                if (n == 0)
-                {
-                    RadiusFont.LabelAt(new Rect(0f, y, w, lhMeta), "期间没有发生随机事件。",
-                        RadiusFont.Scale.Meta, Palette.Flat.InkLow, TextAnchor.MiddleLeft, false, false);
-                }
-                else
-                {
-                    for (int i = 0; i < n; i++)
-                    {
-                        float lh = Mathf.Max(lhMeta, RadiusFont.HeightAt(lines[i], w, RadiusFont.Scale.Meta, false));
-                        RadiusFont.LabelAt(new Rect(0f, y, w, lh), lines[i],
-                            RadiusFont.Scale.Meta, Palette.Flat.InkLow, TextAnchor.UpperLeft, false, true);
-                        y += lh;
-                    }
-                }
-            }
-            finally
-            {
-                if (opened)
-                {
-                    FlatScroll.EndOrUnwind(depth);
-                }
-            }
+            ReportSkin.Draw(r, selectedRecord.ToReportData(), ref recordScroll);
         }
 
         /// <summary>历史那一组的一行（S15 第二期）：标题（收工 / 中断）+ 结束时刻 · 时长 · 事件条数。</summary>

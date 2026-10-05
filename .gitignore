@@ -27,3 +27,7 @@ Source/bin/
 *.suo
 Thumbs.db
 desktop.ini
+
+# ── 模组目录里的临时 / 分析目录（下划线前缀）──────────────────────────────
+# 它们会被 deploy.ps1 一起镜像进游戏 Mods（那是脚本既有行为），但不该进版本库。
+RimDelegation/_*/

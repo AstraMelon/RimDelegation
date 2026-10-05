@@ -81,4 +81,11 @@
   <RimDelegationConsoleNoMatch>没有符合条件的委派。请调整搜索关键词。</RimDelegationConsoleNoMatch>
   <RimDelegationConsoleHours>累计作业 {0:0.#} 小时 · 休息 {1:0.#} 小时</RimDelegationConsoleHours>
 
+  <!-- 委派报告（RIM-9）：主控台右栏的「历史详情」与收工时的签核窗口共用同一份排版，
+       所以这三条也都只有一份来源。 -->
+  <RimDelegationReportEvents>事件明细（{0} 条）</RimDelegationReportEvents>
+  <RimDelegationReportEventsNone>事件明细</RimDelegationReportEventsNone>
+  <RimDelegationReportNoEvents>期间没有发生随机事件。</RimDelegationReportNoEvents>
+  <RimDelegationReportConfirm>确认</RimDelegationReportConfirm>
+
 </LanguageData>

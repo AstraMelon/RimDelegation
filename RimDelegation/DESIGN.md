@@ -5723,3 +5723,82 @@ RimDelegation 与 RimDelegation - Radius UI 一直是**两个 mod**：本体出�
 
 ---
 
+## S36 · RIM-6 + RIM-9：列头折叠开关看不见（修）· 收工报告窗半径化（2026-10-05）
+
+用户原话（2026-10-05，同一轮两条议题）：
+**「左栏、流程、主信息、概览 上面添加了PIN按钮，但是折叠/展开按钮没了」**、
+**「完成后的UI（图二）需要写RadiusUI」**；
+拍板答复：**「修复RIM-6, A；RIM-9, A;」**（RIM-6 取 A = 换成矢量/自绘图标；RIM-9 取 A = 壳与内容一起半径化）。
+
+本轮只动 **`Source/Skin/`** 与两个语言文件，另有一个**顺手的 P0 小修**（英文 Keyed 的非法注释，见 19.107）。
+已 build + deploy（`RimDelegation.dll` 347,136 B，SHA256 `EAE62E48DBB3A578…`，deploy.ps1 自检通过），**待进游戏验收**。
+
+### 19.105 RIM-6：列头折叠开关从"全角字形"改成"自绘几何 + 底"
+
+- 现场（用户截图 + 逐像素复核）：四个列头**只有图钉**，图钉右边那 22px 一格是**纯背景** ——
+  既没有按钮底、也没有任何字形笔画。而 `ildasm` 反汇编**已部署的 dll**
+  确认 `DrawColumnToggle` 里那颗 `UIKit.Button(rect, "－"/"＋", ButtonStyle.Ghost, …)` **确实在画**、
+  位置也正确（`Source/Skin/DelegationConsoleSkin.cs:1810-1876`，RIM-6 议题里有 IL 逐行表）。
+- 结论：**代码没错，错在那一格的全部视觉都押在 `Ghost` 档 + 全角 `－`(U+FF0D) / `＋`(U+FF0B) 两个字形上**
+  （`Ghost` 不铺底，字形不出来就等于没有按钮）；次要嫌疑是它右边缘正好压在列边界 `col.xMax - 2` 上被裁。
+- 改法（两条一起，不依赖任何一条成立）：
+  ① **自绘**：新增 `DrawCollapseToggle` —— `CardChrome.Rounded(Surface2, 6)` + `CardChrome.Hover` +
+     `RadiusFont.LabelAt("－"/"＋", Scale.Section)` + `Widgets.ButtonInvisible`，
+     与 `DrawPinToggle` **同源同款**；即使字形仍然不出来，也有底色保证"看得见、点得到"；
+  ② **内收**：新增常量 `ColBtnW = 18f`（按钮方块，原 22×20）与 `BtnGap = 4f`，
+     整组从 `col.xMax - 24` 收到 `col.xMax - BtnGap - ColBtnW`，右边缘不再贴列边界；
+     列名让位宽度随之由写死的 `58` 改成**算式**（`PinBtnW + BtnGap + ColBtnW + BtnGap + 16`）。
+- 为什么不用 `RadiusIcon`：框架图标集里**没有加减号**（`Textures/RadiusUI/Action/` 逐张看过：
+  只有 `DevPlus` / `ChevronDown` / `Strip` / `StripArrow` 等），而"折叠/展开"最直观的仍是 `＋/－`。
+- 保留：图钉语义、`－` 顺带拔钉、收成 26px 竖条时只画折叠开关 —— 全部照旧（`DrawColumnToggle` 的分支没动）。
+
+### 19.106 RIM-9：收工签核窗口改走 Radius 画法
+
+- 现场：图二那个窗口原本是**整个原版**（原版窗口底 + `Widgets.DrawMenuSection` + 两颗原版按钮），
+  而主控台早就半径化了 ⇒ 同一界面两种质感。
+- ① **窗口底**：`ConsoleWindowBridge` 的参数类型从 `Window_Delegations` **放宽到 `Window`**
+  （`windowDrawing` 本来就是 `Verse.Window` 的字段，与具体窗口类无关）；
+  `Dialog_DelegationReport.DoWindowContents` 开头 `new ConsoleWindowBridge(this).InstallChrome()`，
+  于是两个窗口底都是同一个 `ConsoleWindowDrawing`（圆角 `Surface0` + `Border` 描边 + 关阴影）。
+- ② **正文**：新增 `Source/Skin/ReportSkin.cs` —— 把原先长在 `DelegationConsoleSkin.RecordMain` 里的
+  Radius 报告排版整块搬过来，**历史详情与签核窗口共用这一份**（`RecordMain` 现在只剩转交一行）。
+  数据仍只来自 `DelegationReportData`，本类不碰逻辑。
+- ③ **底栏**：新增 `ReportSkin.DrawConfirmBar`（`CardChrome.Rounded` + `RadiusFont.Label` + `ButtonInvisible`），
+  右端一颗「确认」；**关窗动作交给窗口自己**（`PostClose()` 要触发报告排队器，皮肤不能绕过它）。
+  同时把 `doCloseButton` 关掉（原版那颗"关闭"会和半径底栏打架），标题栏的 ✕（`doCloseX`）保留。
+- ④ **兜底**：`ConsoleWindowBridge.Ready == false` 时**整窗落回原版画法**
+  （`DelegationReportUI.Draw` + 原版按钮）——与主控台同一条"界面绝不空窗"的路径；
+  原版画法的 `DelegationReportUI` **保留不删**。
+- ⑤ 玩家可见文案进 Keyed：`RimDelegationReportEvents` / `_EventsNone` / `_NoEvents` / `_Confirm`（中英各 4 条）。
+- 窗口 `InitialSize` 560×460 → **640×520**（给半径标题 + 底栏留位置）。
+
+### 19.107 顺手修：英文 Keyed 里那处非法注释（RIM-1 遗留的 1 字符项）
+
+- `Languages/English/Keyed/RimDelegation.xml:64` 的注释里写着 `register -- no developer voice`，
+  XML 注释**不允许连续两个减号** ⇒ 整份文件解析失败、**59 个 key 全部作废**
+  （中文那份一直正常，所以只在英文环境暴露）。
+- 本轮因为要往这文件里加 RIM-9 的 4 条 key，顺手把 `--` 改成 `—`（em dash）。
+  修后实测：中英两份都良构、**各 63 个 key、键集合完全相同**。
+- 注：`tools/Check-DefsXml.ps1` **只扫 `Defs\`**，抓不到 `Languages/**` —— 这个缺口仍在（RIM-1 已记）。
+
+### S36 验收步骤
+
+① 进游戏打开「委派」主控台 ⇒ 四个列头（左栏 / 流程 / 主信息 / 概览）**每栏都能同时看到图钉与它左边的 `－`**，
+   两颗都有底色、都能点；鼠标悬停各自出 tooltip（「收起左栏」/「固定展开左栏」）；
+② 点某一栏的 `－` ⇒ 该栏收起成 26px 竖条（只剩折叠开关）；再点 `＋` ⇒ 展开；
+③ 点图钉 ⇒ 变强调色且该栏不再随鼠标收走；点 `－` ⇒ 收起**且图钉一起灭掉**（S34 行为不变）；
+④ 触发一次委派收工（Mod 设置里「结束报告」开着）⇒ 签核窗口是**圆角深色面板**、
+   标题/概要/事件明细都是 Radius 排版、底栏右端一颗 Radius「确认」；
+   点「确认」关窗后，若同时收工了两条，**第二条会接着弹**（排队器没被绕过）；
+⑤ 主控台右栏选一条**历史记录** ⇒ 详情排版与④的窗口**完全一致**（同一份 `ReportSkin.Draw`）；
+⑥ 英文语言下：`Player.log` 不应该再有 `RimDelegation.xml` 的解析错误，英文界面文案齐全。
+
+### 遗留（未拍板）
+
+1. **RIM-6 的根因未最终定性**：本轮用"自绘字形 + 底 + 内收"把两种嫌疑一次性都堵上了，
+   但没有做"只留字形 / 只改位置"的对照实验 ⇒ 若将来又出现"开关看不见"，先按 RIM-6 议题的复核路径二分。
+2. `Widgets.FillableBar` 仍留在旧对话框与**原版兜底**的报告画法里（`docs/设计文档.md §3` 已记）。
+3. RIM-7（三段标题发虚）、RIM-8（收集任务段取空后空白）**未做**，仍是 backlog。
+
+---
+
