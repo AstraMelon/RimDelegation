@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Verse;
 
 namespace RimDelegation
@@ -113,6 +114,60 @@ namespace RimDelegation
         /// <summary>S31：收押**倒地**的守军当俘虏（用户拍板 4A：无条件收）。走原版 `Caravan.AddPawn` 自动收押。</summary>
         public bool cleanupCapturePrisoners = true;
 
+        // ── 主控台皮肤（Radius UI）的本地阅读偏好 ────────────────────────────────
+        //
+        // RIM-3（2026-10-05）：皮肤并入本体 ⇒ 原来的 `RadiusUISkinSettings` 也并进这里。
+        // 为什么必须并：合并后只有一个 Mod 类（`RimDelegationMod`），而 Mod 设置页只能有一个，
+        // 再开第二个 `ModSettings` 实例就会出现"两块设置、玩家不知道哪块管哪块"。
+        // 全部是**本地阅读偏好**，不进存档。
+        // ⚠️ 合并后皮肤原本那份配置（`..._RadiusUISkinMod.xml`）不再被读取：键名一致但文件名变了，
+        //    玩家需要重新勾一次（纯观感，无副作用）。
+
+        /// <summary>
+        /// 主控台里"置顶"的站点 ID（S8-b）。
+        ///
+        /// 存在**本地 Mod 配置**里而不是存档里：本 mod 承诺不写存档数据，
+        /// 置顶只是皮肤层的阅读偏好。代价说清楚：这是全局的，另一个存档里若有同 ID 的站点，
+        /// 那条委派也会显示为置顶（纯观感，无副作用）；加载时会清掉已不存在的站点（Prune）。
+        /// </summary>
+        public List<int> pinnedSites = new List<int>();
+
+        // ── 四个区域的折叠开关（S22 用户要求：「最左边的过滤器，流程，中间的核心信息框，概览这几个显示上
+        //    是否可以进行折叠？」）────────────────────────────────────────────────
+        //
+        // 折叠的左栏/流程/主列/概览都收成 26px 竖条，开关统一画在每个区域顶端 22px 的「列头」里。
+        public bool collapsedLeft;
+
+        /// <summary>流程栏折叠 —— 折叠后流程块**回到主列里**（与"宽度不够自动回落"是同一条路径）。</summary>
+        public bool collapsedFlow;
+
+        public bool collapsedMain;
+
+        public bool collapsedRail;
+
+        // ── S34：四个区域的「图钉」（用户原话：「上面折叠展开的+-号按钮左边添加一个图钉PIN按钮，
+        //    点击后可以固定展开」）────────────────────────────────────────────────
+        //
+        // 语义只有一条：**钉住的区域固定保持展开** ——
+        //   ① 不吃「悬浮焦点」的自动收起；
+        //   ② 与 `collapsed*` 撞车时以图钉为准：有效折叠态 = `collapsed* && !pinned*`；
+        //   ③ 点那一栏的「－」＝ 收起**并顺带拔钉**（按钮说的话必须算数）。
+        public bool pinnedLeft;
+
+        public bool pinnedFlow;
+
+        public bool pinnedMain;
+
+        public bool pinnedRail;
+
+        /// <summary>
+        /// S29/S34：**悬浮焦点**（用户原话：「鼠标悬浮在流程，则展开流程，折叠左栏；鼠标悬浮在左栏，则展开左栏」；
+        /// S34 改成**不对称**：「鼠标悬浮在左栏的时候展开左栏，但是不折叠流程」）。
+        ///
+        /// 只影响左栏与流程栏；被图钉钉住的栏不算"被收起"。焦点状态每帧算、**不写配置**。
+        /// </summary>
+        public bool hoverFocus = true;
+
         // ── 「委派」主控台窗口的几何（S8）───────────────────────────────────────
         // 窗口可拖拽可缩放，位置与尺寸存在这里，下次打开原样恢复。
         // 抄的是 Radius UI - Quest Menu 的做法：-1 = 还没记录过（用默认位置），
@@ -151,6 +206,21 @@ namespace RimDelegation
             Scribe_Values.Look(ref cleanupTakeEquipment, "cleanupTakeEquipment", true);
             Scribe_Values.Look(ref corpseCleanup, "corpseCleanup", CorpseCleanupMode.ButcherHere);
             Scribe_Values.Look(ref cleanupCapturePrisoners, "cleanupCapturePrisoners", true);
+            // 主控台皮肤（原 RadiusUISkinSettings，RIM-3 并入；键名一字未改）
+            Scribe_Collections.Look(ref pinnedSites, "pinnedSites", LookMode.Value);
+            Scribe_Values.Look(ref collapsedLeft, "collapsedLeft", false);
+            Scribe_Values.Look(ref collapsedFlow, "collapsedFlow", false);
+            Scribe_Values.Look(ref collapsedMain, "collapsedMain", false);
+            Scribe_Values.Look(ref collapsedRail, "collapsedRail", false);
+            Scribe_Values.Look(ref pinnedLeft, "pinnedLeft", false);
+            Scribe_Values.Look(ref pinnedFlow, "pinnedFlow", false);
+            Scribe_Values.Look(ref pinnedMain, "pinnedMain", false);
+            Scribe_Values.Look(ref pinnedRail, "pinnedRail", false);
+            Scribe_Values.Look(ref hoverFocus, "hoverFocus", true);
+            if (pinnedSites == null)
+            {
+                pinnedSites = new List<int>();
+            }
             Scribe_Values.Look(ref winX, "winX", -1f);
             Scribe_Values.Look(ref winY, "winY", -1f);
             Scribe_Values.Look(ref winW, "winW", 0f);

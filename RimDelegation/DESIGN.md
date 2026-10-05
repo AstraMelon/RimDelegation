@@ -5664,3 +5664,62 @@ S19 立的是"宁缺不显示假 0"⇒ 草稿/计划的概览**少了几行**（
 
 ---
 
+## S35 · RIM-3：把 Radius UI 皮肤并入本体（2026-10-05）
+
+**这是本日志里第一轮"合并 / 收敛"型改动**（前面 S0–S34 都是加功能）。追踪：任务板 **RIM-3**（依赖 RIM-2 的版本基线）。
+
+### 起因
+
+RimDelegation 与 RimDelegation - Radius UI 一直是**两个 mod**：本体出一个 dll、皮肤出第二个 dll；
+皮肤用 **1 个 Harmony Prefix** 掐掉 `Window_Delegations.DoWindowContents` 再自己重画。副产品三条：
+"同一份信息要维护两套画法"（双端准则）、两个工程必须**按顺序编译**、
+以及一条只在"皮肤没装 / 被关掉"时才走的原版画法路径。
+
+### 用户拍板（RIM-3 议题评论，五问五答，**原话**）
+
+| # | 问题 | 用户答复（原话） |
+|---|---|---|
+| 1 | 合并形态 | 「合并形态：皮肤代码直接进本体 Source\\（同一个 dll）」 |
+| 2 | 依赖处理 | 「合并后 astryl.RadiusUI.Framework 变成本体的硬依赖（modDependencies 里直接写死）」 |
+| 3 | 一键回退开关 | 「**移除**」 |
+| 4 | 皮肤目录 | 「**删除**」 |
+| 5 | 双端 UI 准则 | 「**作废**」 |
+
+### 改了什么
+
+| 项 | 改动 |
+|---|---|
+| 目录 | `RimDelegation-RadiusUI\`（15 文件）**删除**；皮肤 3 个 .cs 移入 `RimDelegation\Source\Skin\`（`ConsoleWindowBridge.cs` / `DelegationConsoleSkin.cs` / `SkinButtons.cs`，命名空间仍是 `RimDelegationRadiusUI`） |
+| 绘制入口 | `Window_Delegations.DoWindowContents` 顶部**直接调** `DelegationConsoleSkin.Draw(win, inRect)`，返回 true 就 `return`。**Harmony 补丁点 -1**（回到 4 个）；`SkinPatch.cs` / `RadiusUISkinMod.cs` / 皮肤 `ModBoot.cs` / 皮肤 `deploy.ps1` / `README.md` / `About.xml` / `RimDelegation.RadiusUI.csproj` 删除 |
+| 兜底 | 皮肤不接管（反射拿不到 `Verse.Window.windowDrawing`）或最外层抛异常 ⇒ 落回旧画法（`DelegateToSkin` 里 try/catch + `Log.ErrorOnce`）。这是"界面绝不空窗"的最后一道，**不是给玩家切的开关** |
+| 设置 | 皮肤设置并入 `RimDelegationSettings`（+10 键：`pinnedSites` / `collapsedLeft..Rail` / `pinnedLeft..Rail` / `hoverFocus`）；`enabled` / `skinConsole` 两个开关**删除**；标题栏那枚「切回原版」（`Action/SwapView`）**删除** |
+| 依赖 | `About.xml` 加 `astryl.RadiusUI.Framework`（带 `steamWorkshopUrl`）+ `loadAfter`；`csproj` 加 `<RadiusUIDir>` 与 `RadiusUI.Framework` 引用（`<Private>False</Private>`）；`ModBoot` 加 `FrameworkVersion.Require("RimDelegation", 32)` |
+| 日志 | 皮肤日志统一 `[RimDelegation] 皮肤：` 前缀；启动横幅尾部新增 `\| 主控台画法 Radius UI 皮肤`。**顺手修掉 4 组 `Log.WarningOnce/ErrorOnce` key 冲突**（皮肤 0x5E0E0/1/2/4 与本体 `DelegationThreatSummary` 的 0x5E0E1/2 撞车 ⇒ 合并前就存在、现在会互相吞日志；另两处既有冲突 0x5E0D1、0x5E0CF 一并唯一化）。修完 37 个 key 全唯一 |
+| 文档 | 三份文档按"单端"改写；皮肤 README / About.xml 随目录删除 |
+
+### 证据（2026-10-05，全部本机实测）
+
+- 编译：单工程 MSBuild（`Source\RimDelegation.csproj`），**0 error / 0 warning**。
+- 产物：`RimDelegation.dll` **346,112 B**（合并前 293,376 B）/ SHA256 `88BC5BDD657EF52243AD224D996E71E84CC6C5E53CB37B6B51DF80C56EFACE53`（20:42:02。20:34:15 那一版 `0A980D00…` 是修日志 key 冲突之前的，已被覆盖）；
+  引用表含 `RadiusUI.Framework`；`DelegationConsoleSkin` / `ConsoleWindowDrawing` / `SkinButtons` 均在产物里。
+- 部署：`deploy.ps1` 自检通过（游戏侧与工作区 dll 同哈希）；游戏 `Mods\RimDelegation` **148 文件 / 0 个 RadiusUI 残留**；`Mods\RimDelegation-RadiusUI\` 已删除。
+- `ModsConfig.xml`：移除 `duskmelon.rimdelegation.radiusui`（备份 `_backup_ModsConfig_before_RIM3_20261005_203843.xml`）；`<li>` 154 → 153（activeMods 148 + knownExpansions 5）。
+- 旧皮肤 dll（删除前记录存档）：75,776 B / SHA256 `6CFD130271C497522CDAC8A6A7AB702AB29745622C6F1ED9888E67F5ADF77FBE`。
+
+### S35 验收步骤
+
+① 从 Steam 启动（**只启用 RimDelegation 一个**——不再有皮肤 mod 可勾）；`Player.log` 应出现
+   `[RimDelegation] 已加载 | … | 主控台画法 Radius UI 皮肤`，且**没有**任何 `[RimDelegation-RadiusUI]` 横幅；
+② 底部「委派」按钮 → 主控台是 Radius UI 样式（圆角深色面板；标题栏两枚图标：设置 / 关闭，**没有**"切回原版"）；
+③ Mod 设置里能看到「主控台（Radius UI 皮肤）」一段的**悬浮焦点**开关，**看不到**皮肤总开关 / 主控台开关；
+④ 行为回归：左栏折叠与图钉、悬浮焦点、待下达草稿、中止委派、紧急加班按钮全都在。
+
+### 遗留（未拍板，留给下一轮）
+
+1. **旧画法（`Window_Delegations` 里那 1000 多行）要不要真删**：现状是"只在皮肤不可用时才走"。
+   "只删主控台画法"还是"连草稿 + 报告画法一起删"，两条范围都没拍板（属皮肤合并调研清单第 ③ 问）。
+2. 皮肤旧配置文件（`Config\ModSettings\..._RadiusUISkinMod.xml`）不再被读取：置顶 / 折叠 / 图钉需重新勾一次（纯观感，无副作用）。
+3. **远程 GitHub 仓库仍未推送**（RIM-2 剩余项）。
+
+---
+

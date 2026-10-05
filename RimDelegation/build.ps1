@@ -20,7 +20,10 @@ param(
     [string]$RimWorldDir,
 
     # 覆盖 Harmony 所在目录（默认 brrainz.harmony 的 Current\Assemblies）
-    [string]$HarmonyDir
+    [string]$HarmonyDir,
+
+    # 覆盖 Radius UI Framework 所在目录（RIM-3：皮肤并入本体后的硬依赖）
+    [string]$RadiusUIDir
 )
 
 $ErrorActionPreference = 'Stop'
@@ -56,6 +59,7 @@ $msbuildArgs = @(
 )
 if ($RimWorldDir) { $msbuildArgs += "/p:RimWorldDir=$RimWorldDir" }
 if ($HarmonyDir) { $msbuildArgs += "/p:HarmonyDir=$HarmonyDir" }
+if ($RadiusUIDir) { $msbuildArgs += "/p:RadiusUIDir=$RadiusUIDir" }
 
 Write-Host "编译中（$Configuration）..." -ForegroundColor Cyan
 & $msbuild @msbuildArgs

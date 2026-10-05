@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using RimDelegationRadiusUI;
 using RimWorld;
 using RimWorld.Planet;
 using UnityEngine;
@@ -250,6 +252,17 @@ namespace RimDelegation
                 windowRect.height = MinH;
             }
 
+            // ── RIM-3（2026-10-05）：皮肤已并入本体，主控台默认走 Radius UI 画法 ──────────────
+            // 这里是**直接调用**，不再用 Harmony 前缀补丁（合并前的 SkinPatch.cs 已整个删除）：
+            // 同一个程序集里没必要为一处绘制入口付"反射找方法 + 打补丁"的代价，
+            // 而且编译期就能保证 DelegationConsoleSkin 存在。
+            // 皮肤不接管（反射拿不到 Verse.Window.windowDrawing）或抛异常时，落到下面这段原版画法 ——
+            // 那是"界面绝不空窗"的最后一道，不是给玩家切着玩的两套皮（回退开关已按用户拍板移除）。
+            if (DelegateToSkin(inRect))
+            {
+                return;
+            }
+
             List<WorldObjectComp_Delegations> all = DelegationRegistry.AllActive();
             List<WorldObjectComp_Delegations> planned = DelegationRegistry.AllPlanned();
             // S15 第二期：历史（世界级组件 —— 跨委派、跨地点留存，采空销毁的地点也在里面）
@@ -284,6 +297,26 @@ namespace RimDelegation
 
             DrawList(listRect, all, planned, history, drafts);
             DrawDetail(detailRect);
+        }
+
+        /// <summary>
+        /// 把这一帧交给 Radius UI 皮肤画。返回 true = 皮肤画完，调用方直接 return。
+        ///
+        /// 为什么还要在最外层套一层 try/catch（皮肤内部已经逐块兜了异常）：
+        /// 皮肤是 4000+ 行绘制代码，万一在**最外层**抛出来（例如 GUI 组失衡、贴图加载失败），
+        /// 不能让整个窗口消失 —— 落回原版画法，玩家至少还能看、还能操作委派。
+        /// </summary>
+        private bool DelegateToSkin(Rect inRect)
+        {
+            try
+            {
+                return DelegationConsoleSkin.Draw(this, inRect);
+            }
+            catch (Exception e)
+            {
+                Log.ErrorOnce("[RimDelegation] 皮肤：主控台绘制在最外层抛异常，本帧回落到原版画法。\n" + e, 0x5E0F5);
+                return false;
+            }
         }
 
         /// <summary>

@@ -14,6 +14,10 @@
 
 首版目标：远距离矿物扫描仪产出的矿点（PreciousLump）。
 
+界面：屏幕底部「委派」按钮打开的主控台用 Radius UI 绘制。RIM-3 起皮肤已**并入本体**，
+不再作为独立 mod 分发（原来的「RimDelegation - Radius UI」已删除）。皮肤只负责画，
+委派逻辑、数据与措辞仍全部由本体算、本体执行。
+
 工程结构说明见 DESIGN.md。</description>
 
   <!-- 1.6 的 Managed 目录里没有 0Harmony.dll，Harmony 由 brrainz.harmony 提供 -->
@@ -23,9 +27,20 @@
       <displayName>Harmony</displayName>
       <steamWorkshopUrl>steam://url/CommunityFilePage/2009463077</steamWorkshopUrl>
     </li>
+    <!-- RIM-3：主控台皮肤在**编译期**强引用 Radius UI Framework（Source\Skin\），
+         所以这是硬依赖（用户拍板），不是"未装就自动走原版"的软依赖。
+         URL 必填：缺了它游戏会在 Player.log 里刷一条依赖警告（RIM-1 警告 A）。 -->
+    <li>
+      <packageId>astryl.RadiusUI.Framework</packageId>
+      <displayName>Radius UI Framework</displayName>
+      <steamWorkshopUrl>steam://url/CommunityFilePage/3786107692</steamWorkshopUrl>
+    </li>
   </modDependencies>
 
   <loadAfter>
     <li>brrainz.harmony</li>
+    <li>astryl.RadiusUI.Framework</li>
   </loadAfter>
+
+  <modVersion>0.2.0</modVersion>
 </ModMetaData>

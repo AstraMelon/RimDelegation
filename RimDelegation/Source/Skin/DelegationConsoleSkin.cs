@@ -9,6 +9,13 @@ using Verse;
 
 namespace RimDelegationRadiusUI
 {
+    // ════════════════════════════════════════════════════════════════════════════
+    // RIM-3（2026-10-05）：本文件原属独立 mod「RimDelegation - Radius UI」，现随皮肤
+    // **整体并入 RimDelegation 本体程序集**（RimDelegation.dll）。命名空间保持不变，
+    // 以免 4000+ 行里出现大量改名噪声；合并后不再有"皮肤开关 / 回退原版"这回事 ——
+    // 主控台只有这一种画法（用户拍板：硬依赖 Radius UI Framework、移除回退开关）。
+    // ════════════════════════════════════════════════════════════════════════════
+
     /// <summary>左栏排序方式（主控台专用，不动 RimDelegation 的参与者排序）。</summary>
     internal enum ConsoleSort
     {
@@ -166,15 +173,27 @@ namespace RimDelegationRadiusUI
 
         // ================================================================ 入口
 
+        /// <summary>
+        /// 主控台皮肤的**唯一入口**（RIM-3 起由 <c>Window_Delegations.DoWindowContents</c> 直接调用，
+        /// 不再走 Harmony 前缀补丁）。
+        ///
+        /// <returns>true = 本帧由皮肤画完，调用方应当直接 return；
+        /// false = 皮肤不接管（反射桥不可用），调用方落回原版画法。</returns>
+        /// </summary>
         public static bool Draw(Window_Delegations win, Rect inRect)
         {
             if (!ConsoleWindowBridge.Ready)
             {
+                // 启动时反射 `Verse.Window.windowDrawing` 就失败了 ⇒ 本会话主控台一直是原版画法。
+                // 这条只喊一次，别每帧刷屏（原皮肤 mod 走的是"patching 状态"，同样的语义）。
+                Log.WarningOnce("[RimDelegation] 皮肤：主控台不可用，本会话使用原版主控台画法（" +
+                                "通常是 Verse.Window.windowDrawing 改了实现）", 0x5E0F0);
                 return false;
             }
 
-            // ⚠️ 我们整段阻断了 RimDelegation 的 DoWindowContents，它里面那道"窗口被拖太小就兜回下限"
-            //    也随之被绕过 —— 这里必须自己补一遍（数值与它的 MinW/MinH 一致）。
+            // ⚠️ 皮肤接管后 RimDelegation 原版 DoWindowContents 的下半段不执行，它里面那道
+            //    "窗口被拖太小就兜回下限"也随之被绕过 —— 这里必须自己补一遍。
+            //    注意皮肤的下限（900×480）比原版的（760×420）大：主控台的内容是照三/四栏排的。
             if (win.windowRect.width < SkinMinW)
             {
                 win.windowRect.width = SkinMinW;
@@ -215,8 +234,9 @@ namespace RimDelegationRadiusUI
 
             List<WorldObjectComp_Delegations> all = DelegationRegistry.AllActive();
             List<WorldObjectComp_Delegations> planned = DelegationRegistry.AllPlanned();
-            // S18：待下达的草稿（内存态，不进存档）。两件事必须在皮肤里自己补：
-            //   ① 消费入口焦点 —— 皮肤整段拦掉 `DoWindowContents`，原版的 EnsureSelection 不跑；
+            // S18：待下达的草稿（内存态，不进存档）。两件事必须在皮肤里自己补（RIM-3 后依然成立：
+            // 皮肤接管即 return，原版 DoWindowContents 的下半段不执行）：
+            //   ① 消费入口焦点 —— 原版的 EnsureSelection 不跑；
             //   ② 动态 forcePause —— 原版是靠 `forcePause = drafts.Count > 0` 那一行做的，同样不跑。
             List<DelegationDraft> drafts = DraftList();
             DelegationDraft focusDraft = win.ConsumePendingDraft();
@@ -255,8 +275,8 @@ namespace RimDelegationRadiusUI
 
             // S22：四个区域的折叠开关画在各自顶端的「列头」里（统一 22px 高）——
             // 这样不必改四列各自的内部标题行（它们的高度与位置各不一样）。
-            // 折叠只是**本地阅读偏好**（`RadiusUISkinSettings`），不进存档。
-            RadiusUISkinSettings skin = RadiusUISkinMod.Settings;
+            // 折叠只是**本地阅读偏好**（`RimDelegationSettings`），不进存档。
+            RimDelegationSettings skin = RimDelegationMod.Settings;
             // S34：图钉 = 固定展开 ⇒ 生效的折叠态 = `collapsed* && !pinned*`
             //（点那一栏的「－」会顺带拔钉，见 DrawColumnToggle，所以不会出现"钉住却收着"的状态）。
             bool pinLeft = skin != null && skin.pinnedLeft;
@@ -441,19 +461,14 @@ namespace RimDelegationRadiusUI
             RadiusFont.Label(new Rect(titleX + titleW + 16f, r.y, 460f, r.height), counts, GameFont.Small, false,
                 Palette.TextDim, TextAnchor.MiddleLeft, false);
 
-            // 右侧三枚：设置 / 切回原版 / 关闭（Quest Menu 同款位置与间距）
+            // 右侧两枚：设置 / 关闭（Quest Menu 同款位置与间距）。
+            // RIM-3（皮肤并入本体）后**没有**"切回原版"了 —— 用户拍板取消回退开关，
+            // 主控台只有 Radius UI 一种画法；那枚 SwapView 按钮连同 `skinConsole` 一起删除。
             float bx = r.xMax - 16f - 30f;
             if (UIKit.IconButton(new Rect(bx, r.y + 11f, 30f, 30f), IconSet.Get("Action/Decline"),
                     "关闭"))
             {
                 win.Close(true);
-            }
-            bx -= 38f;
-            if (UIKit.IconButton(new Rect(bx, r.y + 11f, 30f, 30f), IconSet.Get("Action/SwapView"),
-                    "临时切回原版主控台（可在 Mod 设置中恢复）"))
-            {
-                RadiusUISkinMod.Settings.skinConsole = false;
-                RadiusUISkinMod.ApplyAll();
             }
             bx -= 38f;
             if (UIKit.IconButton(new Rect(bx, r.y + 11f, 30f, 30f), IconSet.Get("Action/Settings"),
@@ -1184,7 +1199,7 @@ namespace RimDelegationRadiusUI
             }
             catch (Exception e)
             {
-                Log.WarningOnce("[RimDelegation-RadiusUI] 草稿页「预期获得」绘制失败：" + e.Message, 0x5E0E4);
+                Log.WarningOnce("[RimDelegation] 皮肤：草稿页「预期获得」绘制失败：" + e.Message, 0x5E0F4);
             }
 
             // ---- 现场物资（同款分区标题）：草稿这一格**未知** ——
@@ -1726,7 +1741,7 @@ namespace RimDelegationRadiusUI
         /// 所以钉住左栏不会把整套悬浮焦点关掉（只是左栏不再被收起，见 Draw 里的 `!pinLeft`）。
         /// 鼠标离开两栏 ⇒ 归 None，同样交还给用户设置。
         /// </summary>
-        private static void UpdateColumnFocus(RadiusUISkinSettings skin, bool colLeft, bool colFlow)
+        private static void UpdateColumnFocus(RimDelegationSettings skin, bool colLeft, bool colFlow)
         {
             if (skin == null || !skin.hoverFocus || colLeft || colFlow)
             {
@@ -1756,7 +1771,7 @@ namespace RimDelegationRadiusUI
         /// （左栏是状态行、流程栏是位置行 + Section、主列是地点标题 + i 按钮、右栏是卡片栈），
         /// 逐个改造会四处分叉；统一一条列头则只有一个实现。
         ///
-        /// 折叠状态存**本地 Mod 配置**（`RadiusUISkinSettings.collapsed*`）；点击当帧即写，
+        /// 折叠状态存**本地 Mod 配置**（`RimDelegationSettings.collapsed*`）；点击当帧即写，
         /// 布局在下一帧生效（一帧延迟，肉眼无感）。图钉（S34）同住一份配置。
         /// </summary>
         /// <param name="flowHead">
@@ -1765,7 +1780,7 @@ namespace RimDelegationRadiusUI
         /// </param>
         private static void DrawColumnHeads(Rect head, Rect listRect, Rect flowHead, Rect mainRect, Rect railRect)
         {
-            RadiusUISkinSettings skin = RadiusUISkinMod.Settings;
+            RimDelegationSettings skin = RimDelegationMod.Settings;
             if (skin == null)
             {
                 return;
@@ -2797,11 +2812,11 @@ namespace RimDelegationRadiusUI
                     snapshots[site.ID] = snap;
                     Texture2D first = snap.Get(site.Tile, east, north, WorldSnapshot.PlanetRadius * 0.1f,
                         null, default(Vector2), null);
-                    if (RadiusUISkinMod.Settings != null && RadiusUISkinMod.Settings.verbose)
+                    if (RimDelegationMod.Settings != null && RimDelegationMod.Settings.verboseLogging)
                     {
                         double ms = (System.Diagnostics.Stopwatch.GetTimestamp() - t0) * 1000.0
                                     / System.Diagnostics.Stopwatch.Frequency;
-                        Log.Message(string.Format("[RimDelegation-RadiusUI] 世界缩略图首次构建：站点 {0}，用时 {1:0.0} ms",
+                        Log.Message(string.Format("[RimDelegation] 皮肤：世界缩略图首次构建：站点 {0}，用时 {1:0.0} ms",
                             site.ID, ms));
                     }
                     return first;
@@ -2811,7 +2826,7 @@ namespace RimDelegationRadiusUI
             }
             catch (Exception e)
             {
-                Log.WarningOnce("[RimDelegation-RadiusUI] 世界缩略图构建失败（该卡退化为空底）：" + e.Message, 0x5E0E2);
+                Log.WarningOnce("[RimDelegation] 皮肤：世界缩略图构建失败（该卡退化为空底）：" + e.Message, 0x5E0F2);
                 return null;
             }
         }
@@ -3959,11 +3974,11 @@ namespace RimDelegationRadiusUI
             {
                 pinned.Add(site.ID);
             }
-            RadiusUISkinSettings s = RadiusUISkinMod.Settings;
+            RimDelegationSettings s = RimDelegationMod.Settings;
             if (s != null)
             {
                 s.pinnedSites = new List<int>(pinned);
-                RadiusUISkinMod.Instance?.WriteSettings();
+                RimDelegationMod.Instance?.WriteSettings();
             }
             RebuildBuckets();
         }
@@ -3979,7 +3994,7 @@ namespace RimDelegationRadiusUI
                 return;
             }
             pinnedLoaded = true;
-            RadiusUISkinSettings s = RadiusUISkinMod.Settings;
+            RimDelegationSettings s = RimDelegationMod.Settings;
             if (s?.pinnedSites == null)
             {
                 return;

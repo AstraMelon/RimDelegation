@@ -13,6 +13,9 @@
     <ManagedDir>$(RimWorldDir)\RimWorldWin64_Data\Managed</ManagedDir>
     <!-- 1.6 的游戏目录里【没有】0Harmony.dll，Harmony 由 brrainz.harmony 这个 Mod 提供 -->
     <HarmonyDir Condition="'$(HarmonyDir)' == ''">C:\Program Files (x86)\Steam\steamapps\workshop\content\294100\2009463077\Current\Assemblies</HarmonyDir>
+    <!-- RIM-3（2026-10-05）：Radius UI Framework（workshop id 3786107692）——
+         主控台皮肤已并入本体（Source\Skin\），所以它从"皮肤的依赖"变成**本体的硬依赖**。 -->
+    <RadiusUIDir Condition="'$(RadiusUIDir)' == ''">C:\Program Files (x86)\Steam\steamapps\workshop\content\294100\3786107692\Assemblies</RadiusUIDir>
   </PropertyGroup>
 
   <!-- ===== 工程属性 ===== -->
@@ -86,6 +89,13 @@
     </Reference>
     <Reference Include="0Harmony">
       <HintPath>$(HarmonyDir)\0Harmony.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <!-- RIM-3：主控台皮肤（Source\Skin\）在编译期强引用 Radius UI Framework。
+         <Private>False</Private>：绝不把框架 dll 复制进 Assemblies\ ——
+         那会让游戏重复加载同名程序集，直接冲突。 -->
+    <Reference Include="RadiusUI.Framework">
+      <HintPath>$(RadiusUIDir)\RadiusUI.Framework.dll</HintPath>
       <Private>False</Private>
     </Reference>
   </ItemGroup>

@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using HarmonyLib;
+using RimDelegationRadiusUI;
 using RimWorld;
 using Verse;
 
@@ -20,13 +21,31 @@ namespace RimDelegation
         /// <summary>Harmony 实例 ID：全局唯一，用 packageId。</summary>
         public const string HarmonyId = "duskmelon.rimdelegation";
 
+        /// <summary>
+        /// RIM-3（2026-10-05）：主控台皮肤需要的 Radius UI Framework「代数」。
+        /// 低于它时框架自己会写一条明确日志并在主菜单提示，而不是让我们在运行时
+        /// 撞上 `MissingMethodException`（沿用原皮肤 mod 的同一约定）。
+        /// </summary>
+        public const int SkinRequiredGeneration = 32;
+
         static ModBoot()
         {
             Harmony harmony = new Harmony(HarmonyId);
             harmony.PatchAll(typeof(ModBoot).Assembly);
 
+            // ── RIM-3：主控台皮肤（原独立 mod「RimDelegation - Radius UI」）并入本体 ──────────
+            // ① 向框架声明代数；
+            // ② 解析 `Verse.Window.windowDrawing` 私有字段（换窗口底要用它）。这一步失败 ⇒
+            //    本会话主控台整个走原版画法（`DelegationConsoleSkin.Draw` 直接返回 false）。
+            RadiusUI.Framework.FrameworkVersion.Require("RimDelegation", SkinRequiredGeneration);
+            bool skinOk = ConsoleWindowBridge.Resolve(out string skinError);
+            if (!skinOk)
+            {
+                Log.Warning("[RimDelegation] 主控台皮肤不可用，本会话使用原版主控台画法：" + skinError);
+            }
+
             Log.Message(string.Format(
-                "[RimDelegation] 已加载 | Harmony {0} | 已打补丁方法 {1} 个 | DelegationDef {2} 个 | DelegationModeDef {3} 个 | DelegationEventDef {4} 个 | DelegationFoodMoodDef {5} 个 | DelegationPhaseDef {6} 个 | WorldObjectDef {7} 个",
+                "[RimDelegation] 已加载 | Harmony {0} | 已打补丁方法 {1} 个 | DelegationDef {2} 个 | DelegationModeDef {3} 个 | DelegationEventDef {4} 个 | DelegationFoodMoodDef {5} 个 | DelegationPhaseDef {6} 个 | WorldObjectDef {7} 个 | 主控台画法 {8}",
                 typeof(Harmony).Assembly.GetName().Version,
                 harmony.GetPatchedMethods().Count(),
                 DefDatabase<DelegationDef>.DefCount,
@@ -34,7 +53,8 @@ namespace RimDelegation
                 DefDatabase<DelegationEventDef>.DefCount,
                 DefDatabase<DelegationFoodMoodDef>.DefCount,
                 DefDatabase<DelegationPhaseDef>.DefCount,
-                DefDatabase<WorldObjectDef>.DefCount));
+                DefDatabase<WorldObjectDef>.DefCount,
+                skinOk ? "Radius UI 皮肤" : "原版（皮肤不可用）"));
 
             // 随机事件的 XML 若写坏了，游戏只会静默地"一个事件都不触发"。
             // 这里在启动时就把它喊出来（§19.24）。

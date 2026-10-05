@@ -62,7 +62,7 @@ namespace RimDelegation
             }
             catch (Exception ex)
             {
-                Log.WarningOnce("[RimDelegation] 取「预期获得」列表失败：" + ex.Message, 0x5E0D1);
+                Log.WarningOnce("[RimDelegation] 取「预期获得」列表失败：" + ex.Message, 0x5E0D2);
                 return null;
             }
         }

@@ -7,6 +7,8 @@ namespace RimDelegationRadiusUI
     /// <summary>
     /// 皮肤共用的按钮件（S8 从当时的页签皮肤里抽出来的，S18 起由委派主控台皮肤独用）。
     ///
+    /// RIM-3（2026-10-05）：随 Radius UI 皮肤整体并入本体程序集，命名空间保持不变。
+    ///
     /// 为什么必须共用：RadiusUI 的 `ButtonStyle` 只有 Primary / Solid / Ghost 三档
     /// （反编译确认只有这三个静态字段），没有"危险"档；我们自己铺的那层红按钮
     /// 一旦在两处各写一遍，迟早会出现"页签里是红、主控台里不是"。

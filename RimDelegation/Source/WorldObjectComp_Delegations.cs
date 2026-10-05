@@ -2315,7 +2315,7 @@ namespace RimDelegation
             if (thought == null)
             {
                 // 静默失效：加班不扣心情 = 这机制变成免费。ModBoot 启动时已经报过一次，这里再提一句现场。
-                Log.WarningOnce("[RimDelegation] 紧急加班没有配置心情 Def（DelegationDef.emergencyOvertimeMoodThought），本次加班不扣心情", 0x5E0CF);
+                Log.WarningOnce("[RimDelegation] 紧急加班没有配置心情 Def（DelegationDef.emergencyOvertimeMoodThought），本次加班不扣心情", 0x5E0DC);
                 return;
             }
             int stage = EmergencyOvertimeStage(d.def, emergencyOvertimeUses);

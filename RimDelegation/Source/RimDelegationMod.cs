@@ -40,7 +40,7 @@ namespace RimDelegation
         {
             Listing_Standard listing = new Listing_Standard();
             listing.Begin(inRect);
-            listing.CheckboxLabeled("详细日志（委派开始/中断/完成都写入 Player.log）", ref Settings.verboseLogging);
+            listing.CheckboxLabeled("详细日志（委派生命周期 + 主控台皮肤都写进 Player.log）", ref Settings.verboseLogging);
             listing.GapLine();
             listing.CheckboxLabeled("抵达后仍需确认（预先委派抵达时再弹一次选择框）", ref Settings.requireConfirmOnArrival);
             listing.Label("关掉它 = 预先委派到地方直接开工。");
@@ -84,6 +84,14 @@ namespace RimDelegation
             listing.CheckboxLabeled("　收押倒地守军（当俘虏带回）", ref Settings.cleanupCapturePrisoners);
             listing.Label("　　走原版收押路径（原阵营会记一笔），他们照常吃补给、也可能死在路上。");
             listing.GapLine();
+            // RIM-3（2026-10-05）：Radius UI 皮肤已并入本体，这里只留**阅读偏好**。
+            // 按用户拍板，**没有**"皮肤总开关 / 切回原版主控台"这两项：主控台只有一种画法，
+            // 皮肤代码与原版画法在同一个程序集里（见 Window_Delegations.DelegateToSkin）。
+            listing.Label("主控台（Radius UI 皮肤）：");
+            listing.CheckboxLabeled("　悬浮焦点（左栏 / 流程）", ref Settings.hoverFocus);
+            listing.Label("　　鼠标落在流程栏 ⇒ 展开流程、收起左栏；落在左栏 ⇒ 只展开左栏，**不收起流程**。\n"
+                + "　　鼠标离开两栏就回到你自己的折叠设置；被图钉（列头 ＋/－ 左边的 PIN）固定展开的栏不参与。\n"
+                + "　　折叠 / 图钉本身在主控台的列头里点，与这里无关（它们是本地偏好，不进存档）。");
             listing.Label("工作时长由【委派模式】定义（默认 6:00–22:00），在选择委派的对话框里切换。");
             listing.End();
         }
