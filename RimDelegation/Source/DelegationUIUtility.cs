@@ -1077,6 +1077,84 @@ namespace RimDelegation
                 DelegationSatisfaction.RateFactor(satisfaction)) + "（预计）";
         }
 
+        // ── 满意度**独立一栏**（RIM-5 追加需求，2026-10-05）──────────────────────
+        //
+        // 用户原话：「把满意度单独拆成一栏，悬浮提供简要情报（显示影响的因素），
+        //           工作模式那块的内容也要同步修改」。
+        // 于是口径拆成"主文字 / 副文字 / 悬浮情报"三件，**仍然只有这一份**：
+        // 皮肤概览栏、草稿主列、在途主列、原版页签都从这里取，不许各自拼串。
+
+        /// <summary>满意度栏的**主文字**：`满意度 62%`。</summary>
+        public static string SatisfactionMain(float satisfaction)
+        {
+            return string.Format("满意度 {0}", Mathf.Clamp01(satisfaction).ToStringPercent());
+        }
+
+        /// <summary>满意度栏的**副文字**：`干得挺顺 · 每天心情 +4 · 作业速率 ×1.036`（关掉时说明白）。</summary>
+        public static string SatisfactionSub(float satisfaction, float moodPerDay, float rate)
+        {
+            if (!DelegationSatisfaction.Enabled)
+            {
+                return "已在 Mod 设置里关闭 ⇒ 心情 0、作业速率 ×1";
+            }
+            return string.Format("{0} · 每天心情 {1:+0.#;-0.#;0} · 作业速率 ×{2:0.000}",
+                DelegationSatisfaction.StageLabel(satisfaction) ?? "—", moodPerDay, rate);
+        }
+
+        /// <summary>在途委派满意度栏的副文字（从 Delegation 直接取）。</summary>
+        public static string SatisfactionSubOf(Delegation d)
+        {
+            float s = d?.satisfaction ?? DelegationSatisfaction.Neutral;
+            return SatisfactionSub(s, DelegationSatisfaction.Mood(s),
+                DelegationSatisfaction.RateFactor(s));
+        }
+
+        /// <summary>草稿 / 前往中计划满意度栏的副文字（预计口径）。</summary>
+        public static string SatisfactionSubEstimated(DelegationModeDef mode, float daysAway = 0f)
+        {
+            float s = DelegationSatisfaction.EstimatedValue(mode, daysAway);
+            return SatisfactionSub(s, DelegationSatisfaction.Mood(s),
+                DelegationSatisfaction.RateFactor(s)) + "（预计）";
+        }
+
+        /// <summary>
+        /// 满意度栏的**悬浮情报**：逐条摊开影响满意度的四个来源
+        /// （开关 / 权重 / 子分 / 数据细节）+ 末尾一行汇总。
+        /// 条目与汇总都来自 <see cref="DelegationSatisfaction.FactorLines" />（唯一来源，不在 UI 里重算）。
+        /// </summary>
+        public static string SatisfactionTip(Delegation d)
+        {
+            if (d == null)
+            {
+                return null;
+            }
+            return "满意度 = 四个来源的加权平均（0.5 = 中性）：\n"
+                + string.Join("\n", DelegationSatisfaction.FactorLines(d).ToArray())
+                + "\n\n来源的开关 / 权重在 Mod 设置页；曲线参数在 Defs/RimDelegation_Satisfaction.xml。";
+        }
+
+        /// <summary>满意度栏的悬浮情报（草稿 / 前往中计划的预计口径）。</summary>
+        public static string SatisfactionTipEstimated(DelegationModeDef mode, float daysAway = 0f)
+        {
+            return "满意度（预计）= 四个来源的加权平均（0.5 = 中性）：\n"
+                + string.Join("\n", DelegationSatisfaction.FactorLinesEstimated(mode, daysAway).ToArray())
+                + "\n\n吃喝与在外天数要等开工后才算得准，所以这里标「预计」。";
+        }
+
+        /// <summary>
+        /// 满意度的**单行紧凑写法**（给只有一行位置的场合：原版远行队页签那一行）：
+        /// `62%（心情 +4/天 · 速率 ×1.036）`。完整口径仍用 <see cref="SatisfactionLine" />。
+        /// </summary>
+        public static string SatisfactionShort(float satisfaction, float moodPerDay, float rate)
+        {
+            if (!DelegationSatisfaction.Enabled)
+            {
+                return "已关闭（心情 0 · 速率 ×1）";
+            }
+            return string.Format("{0}（心情 {1:+0.#;-0.#;0}/天 · 速率 ×{2:0.000}）",
+                Mathf.Clamp01(satisfaction).ToStringPercent(), moodPerDay, rate);
+        }
+
         /// <summary>
         /// 作战姿态那一行的措辞（S18 收进共用件）。
         ///

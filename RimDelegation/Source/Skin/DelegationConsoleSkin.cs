@@ -1141,12 +1141,23 @@ namespace RimDelegationRadiusUI
             c.Gap();
 
             // ---- 可点行见方法开头的 `ClickRow`（S25 提到三段之外）
-            // RIM-5：模式行不再报"速率"（模式不提供效率），心情与速率都说满意度那一行。
-            // 草稿里还没有 Delegation 实例 ⇒ 用预计口径（吃喝与在外时间未知时取中性）。
+            // RIM-5 追加（用户原话「工作模式那块的内容也要同步修改」）：模式行**只说自己的事**
+            // —— 作息窗口 × 作业强度；心情与速率归紧接着的「满意度」行。
             float mood = DelegationUtility.DailyMoodOffset(draft.def, draft.mode);
-            ClickRow("Action/Snooze", mood < 0f ? "Stat/TrendDown" : "Stat/Mood", draft.ModeLine(),
-                DelegationUIUtility.SatisfactionLineEstimated(draft.mode), true,
-                "点击切换委派模式（作息窗口 / 作业强度）——换班本身不扣心情，满意度按新模式重算", draft.OpenModeMenu);
+            ClickRow("Action/Snooze", null, draft.ModeLine(),
+                draft.mode == null
+                    ? "（未指定模式）"
+                    : string.Format("作业窗口 {0:0.#} 小时/天 · 点它换班", 24f * draft.mode.WorkFractionPerDay),
+                true,
+                "点击切换委派模式（作息窗口 × 作业强度）——换班本身不扣心情；"
+                + "作业强度是满意度的一个来源，换班后满意度立刻重算", draft.OpenModeMenu);
+
+            // 满意度**单独一行**（不可点：它只是情报；悬浮摊开四个来源）
+            ClickRow("Stat/Mood", mood < 0f ? "Stat/TrendDown" : "Stat/Mood",
+                DelegationUIUtility.SatisfactionMain(
+                    DelegationSatisfaction.EstimatedValue(draft.mode, 0f)),
+                DelegationUIUtility.SatisfactionSubEstimated(draft.mode),
+                false, DelegationUIUtility.SatisfactionTipEstimated(draft.mode), null);
 
             ClickRow("Action/Check", draft.abortWhenOutOfFood ? "Alert/Warning" : "Stat/Food",
                 "结束条件：" + draft.EndConditionLabel(),
@@ -2340,6 +2351,11 @@ namespace RimDelegationRadiusUI
                 DelegationUIUtility.SectionId.Collect);
             if (showCollect)
             {
+            // RIM-5 追加：满意度在**主列也独立一行**（明细在概览栏那条的悬浮情报里，这里给一眼可见的值）
+            c.Line(DelegationUIUtility.SatisfactionLine(d.satisfaction,
+                    DelegationSatisfaction.Mood(d.satisfaction), d.SatisfactionRateFactor),
+                RadiusFont.Scale.Body,
+                d.satisfaction < DelegationSatisfaction.Neutral ? Palette.Warn : Palette.Flat.Ink);
             c.Section("RimDelegationTabTotalProgress".Translate());
             string tail = string.Format("{0:0.#}/{1} {2}", d.cellsMined, d.totalCells, unit);
             float days = d.EstimatedDaysLeft(site.Tile);
@@ -2687,18 +2703,32 @@ namespace RimDelegationRadiusUI
             rows.Add(new GlanceEntry
             {
                 Icon = "Action/Snooze",               // ≈ 💤 作息 / 模式
-                // ≈ 📉 心情下降（0 心情时用中立的心情图标）
-                SubIcon = mood < 0f ? "Stat/TrendDown" : "Stat/Mood",
                 Tint = Palette.Flat.InkMid,
+                // RIM-5 追加（用户原话「工作模式那块的内容也要同步修改」）：模式这一行**只说自己的事**
+                // —— 作息窗口 × 作业强度；心情与速率归下面那条独立的「满意度」行，两行不重复。
                 Main = d.ModeLine(),
-                // RIM-5：这一行的 Sub 换成满意度（唯一一份措辞：D.SatisfactionLine）
-                Sub = d.SatisfactionLine(),
-                SubColor = mood < 0f ? Palette.Warn : Palette.Flat.InkLow,
+                Sub = d.mode == null
+                    ? "（未指定模式）"
+                    : string.Format("作业窗口 {0:0.#} 小时/天 · 点它换班", 24f * d.mode.WorkFractionPerDay),
+                SubColor = Palette.Flat.InkLow,
                 // S10：模式行**本身就是切换入口**（用户要求"切换委派模式直接在大纲里调整"）。
                 // 与原版页签的模式行同一套心智：能点的地方给提示，不给两个入口。
                 Clickable = true,
                 OnClick = () => selected?.OpenModeMenu(d),
-                Tip = "点击切换委派模式（作息窗口 / 作业强度）——换班本身不扣心情，满意度按新模式重算"
+                Tip = "点击切换委派模式（作息窗口 × 作业强度）——换班本身不扣心情；"
+                    + "作业强度是满意度的一个来源，换班后满意度立刻重算，每日心情下一次日结算才换档"
+            });
+            // RIM-5 追加：**满意度单独一栏**（概览栏里独立一行，不再挂在模式行下面），
+            // 悬浮摊开影响它的四个来源（开关 / 权重 / 子分 / 数据细节）+ 汇总行。
+            rows.Add(new GlanceEntry
+            {
+                Icon = "Stat/Mood",                   // ≈ 🙂 心情 / 满意度
+                SubIcon = mood < 0f ? "Stat/TrendDown" : "Stat/Mood",
+                Tint = Palette.Flat.InkMid,
+                Main = DelegationUIUtility.SatisfactionMain(d.satisfaction),
+                Sub = DelegationUIUtility.SatisfactionSubOf(d),
+                SubColor = mood < 0f ? Palette.Warn : Palette.Flat.InkLow,
+                Tip = DelegationUIUtility.SatisfactionTip(d)
             });
             rows.Add(new GlanceEntry
             {
@@ -3159,14 +3189,29 @@ namespace RimDelegationRadiusUI
             rows.Add(new GlanceEntry
             {
                 Icon = "Action/Snooze",
-                SubIcon = mood < 0f ? "Stat/TrendDown" : "Stat/Mood",
                 Tint = Palette.Flat.InkMid,
+                // RIM-5 追加：模式行只说作息 × 作业强度；满意度另起一栏（见下一条）
                 Main = draft.ModeLine(),
-                Sub = DelegationUIUtility.SatisfactionLineEstimated(draft.mode),
-                SubColor = mood < 0f ? Palette.Warn : Palette.Flat.InkLow,
+                Sub = draft.mode == null
+                    ? "（未指定模式）"
+                    : string.Format("作业窗口 {0:0.#} 小时/天 · 点它换班", 24f * draft.mode.WorkFractionPerDay),
+                SubColor = Palette.Flat.InkLow,
                 Clickable = true,
                 OnClick = draft.OpenModeMenu,
-                Tip = "点击切换委派模式（作息窗口 / 作业强度）——换班本身不扣心情，满意度按新模式重算"
+                Tip = "点击切换委派模式（作息窗口 × 作业强度）——换班本身不扣心情；"
+                    + "作业强度是满意度的一个来源，换班后满意度立刻重算"
+            });
+            // RIM-5 追加：满意度独立一栏（草稿是"预计"口径：吃喝与在外天数要等开工）
+            rows.Add(new GlanceEntry
+            {
+                Icon = "Stat/Mood",
+                SubIcon = mood < 0f ? "Stat/TrendDown" : "Stat/Mood",
+                Tint = Palette.Flat.InkMid,
+                Main = DelegationUIUtility.SatisfactionMain(
+                    DelegationSatisfaction.EstimatedValue(draft.mode, 0f)),
+                Sub = DelegationUIUtility.SatisfactionSubEstimated(draft.mode),
+                SubColor = mood < 0f ? Palette.Warn : Palette.Flat.InkLow,
+                Tip = DelegationUIUtility.SatisfactionTipEstimated(draft.mode)
             });
             if (!draft.def.approaches.NullOrEmpty())
             {
@@ -3300,7 +3345,6 @@ namespace RimDelegationRadiusUI
             rows.Add(new GlanceEntry
             {
                 Icon = "Action/Snooze",
-                SubIcon = "Stat/Mood",
                 Tint = Palette.Flat.InkMid,
                 Main = decided ? DelegationUIUtility.ModeLine(req.mode) : "抵达后再定",
                 Sub = decided ? "下单时已经选定的模式" : "当初选的是「延后决定」",
@@ -3309,6 +3353,27 @@ namespace RimDelegationRadiusUI
                     ? null
                     : "抵达后会出现一张「待下达」表单；也可以在主控台右栏点「继续决定」，现在就把它补完"
             });
+            // RIM-5 追加：满意度独立一栏（前往中是"预计"口径；在外天数按 4B 从"实际开始移动"起算）
+            if (decided)
+            {
+                float daysAway = comp.planDepartTickAbs > 0
+                    ? Mathf.Max(0f, (GenTicks.TicksAbs - comp.planDepartTickAbs) / (float)(Delegation.TicksPerHour * 24))
+                    : 0f;
+                rows.Add(new GlanceEntry
+                {
+                    Icon = "Stat/Mood",
+                    SubIcon = "Common/Clock",
+                    Tint = Palette.Flat.InkMid,
+                    Main = DelegationUIUtility.SatisfactionMain(
+                        DelegationSatisfaction.EstimatedValue(req.mode, daysAway)),
+                    Sub = DelegationUIUtility.SatisfactionSubEstimated(req.mode, daysAway),
+                    SubColor = Palette.Flat.InkLow,
+                    Tip = DelegationUIUtility.SatisfactionTipEstimated(req.mode, daysAway)
+                        + (comp.planDepartTickAbs > 0
+                            ? string.Format("\n\n远行队已经上路 {0:0.#} 天（从「实际开始移动」那一刻起算）。", daysAway)
+                            : "\n\n远行队还没开始移动 ⇒ 远行时间按 0 计。")
+                });
+            }
             rows.Add(new GlanceEntry
             {
                 Icon = "Action/Check",

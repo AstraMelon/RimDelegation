@@ -19,7 +19,7 @@
 
   <RimDelegationTabNoDelegation>这支队目前没有进行中的委派。</RimDelegationTabNoDelegation>
   <RimDelegationTabTitle>委派：{0} @ {1}</RimDelegationTabTitle>
-  <RimDelegationTabMode>模式：{0} · 每天心情 {1}</RimDelegationTabMode>
+  <RimDelegationTabMode>模式：{0} · 满意度 {1}</RimDelegationTabMode>
   <RimDelegationTabEndCondition>结束条件：{0} · {1}</RimDelegationTabEndCondition>
   <RimDelegationFoodAbort>补给耗尽时中止</RimDelegationFoodAbort>
   <!-- {0} = worker.ActivityName（开采 / 搜刮 / 营救） -->

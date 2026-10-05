@@ -21,7 +21,7 @@
 
   <RimDelegationTabNoDelegation>This caravan has no delegation in progress.</RimDelegationTabNoDelegation>
   <RimDelegationTabTitle>Delegation: {0} at {1}</RimDelegationTabTitle>
-  <RimDelegationTabMode>Mode: {0} · mood {1} per day</RimDelegationTabMode>
+  <RimDelegationTabMode>Mode: {0} · satisfaction {1}</RimDelegationTabMode>
   <RimDelegationTabEndCondition>Ends when: {0} · {1}</RimDelegationTabEndCondition>
   <RimDelegationFoodAbort>abort when supplies run out</RimDelegationFoodAbort>
   <RimDelegationFoodPressOn>keep working when supplies run out</RimDelegationFoodPressOn>

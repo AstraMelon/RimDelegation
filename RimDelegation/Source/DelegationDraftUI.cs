@@ -145,7 +145,8 @@ namespace RimDelegation
                     draft.exactDeposit.timesDelegated, worker.WorkVerb, draft.exactDeposit.unitsMined,
                     worker.UnitName, draft.exactDeposit.unitsDelivered, worker.OutputUnitName));
             }
-            // ⚠️ "模式"= 作业作息（干多久 / 速率 / 心情代价）⇒ 归**收集任务**；
+            // ⚠️ "模式"= 作业作息（干多久 / 作业强度）⇒ 归**收集任务**；
+            //    它给的心情与效率由满意度产出（RIM-5），所以"速率 / 心情代价"不再挂在这一行上。
             //    有姿态轴时"姿态"那一行在作战任务段里（见 DrawCombatBlock）。
             if (top.ButtonText("委派模式：" + draft.ModeLine() + "   （点击切换）"))
             {
