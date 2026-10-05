@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Defs>
+
+  <!-- ============================================================
+       「委派」主控台入口（S8）
+
+       为什么是**新增**一个底部按钮，而不是像 Radius UI - Quest Menu 那样替换原版按钮：
+         我们只是多一个入口，不需要劫持任何原版东西 —— 那样就还得借壳原版 MainTabWindow
+         （`RequestedTabSize = (1,1)` + `PostOpen` 里把自己关掉）。原版 MainButtonDef 是标准
+         XML Def，`workerClass` 指过来即可；`InterfaceTryActivate()` 的原版实现也只是调 `Activate()`。
+
+       `tabWindowClass` 仍然给了一个空壳（`MainTabWindow_Delegations`）兜底：有些原版路径会去问
+       `def.TabWindow`（热键、Notify_SwitchedMap、别的 mod 直接调 ToggleTab），
+       没有它就会在 `Activator.CreateInstance(null)` 上炸。空壳自己一帧都不画，只负责转交。
+
+       order = 66：紧跟原版「任务」(65)，在「世界」(70) 之前 —— 两者都是"任务面板"。
+       validWithoutMap = true：**委派本来就是世界地图上的事**，没有地图时按钮必须还在
+       （原版 Disabled 的默认实现会因为这条把按钮留在世界地图上）。
+       validWithClassicIdeo = true：经典意识形态模式下也不隐藏。
+       ============================================================ -->
+  <MainButtonDef>
+    <defName>RimDelegation_Delegations</defName>
+    <label>委派</label>
+    <description>打开委派主控台：列出所有在途委派，可以在里面暂停、紧急加班或中止。没有在途委派时按钮会暗下去（仍然可以点开看空态提示）。</description>
+    <iconPath>UI/Icons/RimDelegation_Delegations</iconPath>
+    <order>66</order>
+    <validWithoutMap>true</validWithoutMap>
+    <validWithClassicIdeo>true</validWithClassicIdeo>
+    <closesWorldView>false</closesWorldView>
+    <buttonVisible>true</buttonVisible>
+    <workerClass>RimDelegation.MainButtonWorker_Delegations</workerClass>
+    <tabWindowClass>RimDelegation.MainTabWindow_Delegations</tabWindowClass>
+  </MainButtonDef>
+
+</Defs>

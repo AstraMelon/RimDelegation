@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LanguageData>
+
+  <RimDelegationTabDelegation>Delegation</RimDelegationTabDelegation>
+  <RimDelegationTabMorePawns>…and {0} more not shown</RimDelegationTabMorePawns>
+
+  <!-- Caravan inspect string (Harmony postfix)
+       Status lines are keyed per worker (see DelegationWorker.StatusKeySuffix):
+       the suffix key wins, and the un-suffixed key below is the fallback,
+       so the base key stays "mining" and no _Mining entry is needed.
+       NOTE: these sentences must NOT interpolate a code-supplied Chinese word
+       (only the keyed text itself is language-specific), so where the Chinese
+       file takes a worker-supplied argument this file simply omits the placeholder. -->
+  <RimDelegationCaravanDelegating>Delegated mining in progress.</RimDelegationCaravanDelegating>
+  <RimDelegationCaravanDelegating_Search>Delegated salvaging in progress.</RimDelegationCaravanDelegating_Search>
+  <RimDelegationCaravanDelegating_Rescue>Delegated rescue in progress.</RimDelegationCaravanDelegating_Rescue>
+  <RimDelegationPawnWorking>{0} is mining.</RimDelegationPawnWorking>
+  <RimDelegationPawnWorking_Search>{0} is salvaging.</RimDelegationPawnWorking_Search>
+  <RimDelegationPawnWorking_Rescue>{0} is on a rescue.</RimDelegationPawnWorking_Rescue>
+  <RimDelegationPawnResting>{0} is resting. ({1} bedrolls used)</RimDelegationPawnResting>
+
+  <RimDelegationTabNoDelegation>This caravan has no delegation in progress.</RimDelegationTabNoDelegation>
+  <RimDelegationTabTitle>Delegation: {0} at {1}</RimDelegationTabTitle>
+  <RimDelegationTabMode>Mode: {0} · mood {1} per day</RimDelegationTabMode>
+  <RimDelegationTabEndCondition>Ends when: {0} · {1}</RimDelegationTabEndCondition>
+  <RimDelegationFoodAbort>abort when supplies run out</RimDelegationFoodAbort>
+  <RimDelegationFoodPressOn>keep working when supplies run out</RimDelegationFoodPressOn>
+
+  <!-- {3} = the worker's unit name, {5} = its output unit name -->
+  <RimDelegationTabRunProgress>This run: {0:0.#} / {1} {3} ({2})</RimDelegationTabRunProgress>
+  <RimDelegationTabDeposit>Site deposit: {0}/{1} {4} left · delegated {2} time(s) · {3} {5} delivered so far</RimDelegationTabDeposit>
+  <RimDelegationTabPending>Pending delivery: {0} (settled hourly)</RimDelegationTabPending>
+  <RimDelegationTabQuota>Quota progress: {0} / {1}</RimDelegationTabQuota>
+  <RimDelegationTabOverweight>Note: the caravan is overweight and cannot move</RimDelegationTabOverweight>
+
+  <RimDelegationTabParticipants>Personnel ({0})</RimDelegationTabParticipants>
+  <RimDelegationTabViewAll>View all {0}</RimDelegationTabViewAll>
+  <RimDelegationTabTotalProgress>Overall:</RimDelegationTabTotalProgress>
+  <RimDelegationTabWorking>Now: working</RimDelegationTabWorking>
+  <RimDelegationTabResting>Now: resting (outside work hours)</RimDelegationTabResting>
+  <!-- S8: short status word drawn over the mode row (replaces the old dedicated line) -->
+  <RimDelegationTabStatusWorking>working</RimDelegationTabStatusWorking>
+  <RimDelegationTabStatusResting>resting</RimDelegationTabStatusResting>
+  <RimDelegationTabStatusPaused>paused</RimDelegationTabStatusPaused>
+  <RimDelegationTabStatusStalled>stalled</RimDelegationTabStatusStalled>
+  <RimDelegationTabEta>Estimated time left: {0:0.##} days</RimDelegationTabEta>
+  <RimDelegationTabHours>Worked {0:0.#} h / rested {1:0.#} h</RimDelegationTabHours>
+  <RimDelegationTabTimeoutPaused>Vanilla expiry timer: paused ({0:0.#} days left when paused)</RimDelegationTabTimeoutPaused>
+  <RimDelegationTabPaused>Status: PAUSED - the crew is resting in place (no output, no day budget consumed)</RimDelegationTabPaused>
+  <RimDelegationTabStalled>Status: stalled ({0:0.#} h left) - this time still counts against the day budget</RimDelegationTabStalled>
+  <RimDelegationTabEvents>{0} random event(s) so far</RimDelegationTabEvents>
+  <RimDelegationTabEventsOff>(random events are disabled in the mod settings)</RimDelegationTabEventsOff>
+  <RimDelegationTabPause>Pause delegation</RimDelegationTabPause>
+  <RimDelegationTabResume>Resume delegation</RimDelegationTabResume>
+  <RimDelegationTabAbort>Abort delegation</RimDelegationTabAbort>
+  <RimDelegationAbortByPlayer>aborted by the player from the caravan tab</RimDelegationAbortByPlayer>
+
+  <!-- Emergency overtime: {0} = hours bought per click / hours left -->
+  <RimDelegationTabOvertime>Emergency overtime +{0:0.#}h</RimDelegationTabOvertime>
+  <RimDelegationTabOvertimeActive>Overtime ({0:0.#}h left) - add more</RimDelegationTabOvertimeActive>
+  <RimDelegationTabOvertimeCancel>End overtime</RimDelegationTabOvertimeCancel>
+
+  <!-- Delegation console (S8): the floating window opened by the bottom-bar "Delegations" button.
+       Tone (S8-c, user request): written for players, in a plain system register -- no developer voice. -->
+  <RimDelegationConsoleTitle>Delegations ({0} active)</RimDelegationConsoleTitle>
+  <RimDelegationConsoleTitleTip>The left column lists every delegation in progress. Select one to review its details and act on it. The window's position and size are retained.</RimDelegationConsoleTitleTip>
+  <RimDelegationConsoleEmpty>No delegation is in progress.</RimDelegationConsoleEmpty>
+  <RimDelegationConsoleEmptyHint>Keep a caravan on the site and choose the delegation command, or right-click the site to issue one directly. The delegation appears in this list once it starts.</RimDelegationConsoleEmptyHint>
+  <RimDelegationConsoleNoSelection>No delegation is selected.</RimDelegationConsoleNoSelection>
+  <RimDelegationConsoleOpenTab>Open the caravan tab</RimDelegationConsoleOpenTab>
+  <!-- S18: the tab became a pointer page; the console gained a "not yet issued" group and a select-caravan button -->
+  <RimDelegationConsoleSelectCaravan>Select that caravan</RimDelegationConsoleSelectCaravan>
+  <RimDelegationTabMoved>Delegation details now live in the Delegations console.</RimDelegationTabMoved>
+  <RimDelegationTabMovedHint>You can also open it any time with the "Delegations" button at the bottom of the screen (position and size are remembered).</RimDelegationTabMovedHint>
+  <RimDelegationTabOpenConsole>Open the Delegations console</RimDelegationTabOpenConsole>
+  <RimDelegationConsoleDrafts>Not yet issued ({0})</RimDelegationConsoleDrafts>
+  <!-- S8-b console, Quest-UI style three-zone skin -->
+  <RimDelegationConsoleTitleShort>Delegations</RimDelegationConsoleTitleShort>
+  <RimDelegationConsoleCounts>{0} in progress · {1} working · {2} paused · {3} en route</RimDelegationConsoleCounts>
+  <RimDelegationConsoleSelection>{0} total · item {1}</RimDelegationConsoleSelection>
+  <RimDelegationConsoleNoMatch>No delegation matches the filter. Adjust the search terms.</RimDelegationConsoleNoMatch>
+  <RimDelegationConsoleHours>Worked {0:0.#} h · rested {1:0.#} h</RimDelegationConsoleHours>
+
+</LanguageData>

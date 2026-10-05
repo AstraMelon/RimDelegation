@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    RimDelegation CombatLab —— 游戏外的战斗计算验证器（WinForms 桌面程序）。
+
+    目的：不进 RimWorld，直接摆敌我编队、跑抽象战斗、看预告与战报，
+    用来验证 Prototype/Combat/Core 里的计算核心。
+
+    与 RimWorld 完全无关：只链接纯核心文件，不引用 Assembly-CSharp / Unity。
+  -->
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <RootNamespace>RimDelegation.CombatLab</RootNamespace>
+    <AssemblyName>RimDelegation.CombatLab</AssemblyName>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <ApplicationHighDpiMode>SystemAware</ApplicationHighDpiMode>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <NoWarn>$(NoWarn);WFO0003</NoWarn>
+  </PropertyGroup>
+
+  <!-- 计算核心 + 离线自测：与游戏 Mod 共用同一批源文件，零复制 -->
+  <ItemGroup>
+    <Compile Include="..\Source\Combat\Core\*.cs" LinkBase="Core" />
+    <Compile Include="..\Prototype\Combat\Tests\*.cs" LinkBase="Tests" />
+  </ItemGroup>
+
+</Project>

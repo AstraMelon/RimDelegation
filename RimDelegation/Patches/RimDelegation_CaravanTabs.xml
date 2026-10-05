@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Patch>
+
+  <!--
+    给远行队（Caravan）的世界地图 inspect 面板加一个独立页签「委派」。
+
+    原版机制（已反编译确认）：
+      WorldInspectPane.CurTabs → WorldObject.GetInspectTabs() → def.inspectorTabsResolved
+      InspectPaneUtility.DoTabs 里 `if (tab.IsVisible)` 同时管住页签按钮与面板绘制
+    ⇒ 我们的 WITab_Caravan_Delegation 把 IsVisible 写成"这个远行队正在委派"，
+      于是只有真正在干活的远行队才会出现这个页签，其它远行队完全不受影响。
+  -->
+  <Operation Class="PatchOperationAdd">
+    <xpath>Defs/WorldObjectDef[defName="Caravan"]/inspectorTabs</xpath>
+    <value>
+      <li>RimDelegation.WITab_Caravan_Delegation</li>
+    </value>
+  </Operation>
+
+</Patch>

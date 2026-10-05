@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Patch>
+
+  <!--
+    给**所有** Site 类的世界对象挂上「委派宿主」与「威胁评估」组件。
+
+    ⚠️ 这里必须列出全部 5 个 def，不能只写 `Site`：
+       `Site` / `SpaceSite` / `ClaimableSite` / `ClaimableSpaceSite` / `Mechhive`
+       的 `worldObjectClass` 全都是 `RimWorld.Planet.Site`（已用 rimsearcher 核实），
+       但它们是**互相独立的 WorldObjectDef** —— 只 patch `Site` 的话，
+       建在这四种 def 上的事件点（例：Odyssey 的轨道物资点 / 可占领站点）
+       既没有委派入口、也没有威胁评估，右键菜单里当然什么都看不到。
+
+    原版这 5 个 def 的 comps 里本来就有 9 个组件（Timeout / DefeatAllEnemiesQuest /
+    ItemStashContents / DownedRefugee / PrisonerWillingToJoin / FormCaravan /
+    TimedDetectionRaids / EnterCooldown / TimedMakeFactionHostile），所以 comps 节点一定存在，
+    用 PatchOperationAdd 追加即可。
+
+    这两个 comp 只在「地点上存在匹配 DelegationDef 的 SitePart」或「地点上有守军」时才产出 UI，
+    其余地点完全静默。门路由它们提供：
+      WorldObjectComp.GetCaravanGizmos    → 车队停在地点上时的就地委派按钮
+      WorldObjectComp.GetFloatMenuOptions → 右键地点的委派菜单（就地 / 预先委派）
+
+    缺哪个 def（比如没装 Odyssey）就自动跳过，不会报错。
+  -->
+  <Operation Class="PatchOperationAdd">
+    <xpath>Defs/WorldObjectDef[defName="Site" or defName="SpaceSite" or defName="ClaimableSite" or defName="ClaimableSpaceSite" or defName="Mechhive"]/comps</xpath>
+    <value>
+      <li Class="RimDelegation.WorldObjectCompProperties_Delegations" />
+      <li Class="RimDelegation.WorldObjectCompProperties_ThreatAssessment" />
+    </value>
+  </Operation>
+
+</Patch>

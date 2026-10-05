@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    RimDelegation 战斗计算原型 —— 独立可测工程。
+
+    刻意**不引用** RimWorld / Unity：Combat/ 下的文件是纯计算核心，
+    只依赖 System.*，因此可以脱离游戏直接跑断言。
+
+    游戏侧的适配层（真 pawn → CombatUnitSnapshot、Rand.PushState/PopState 包装）
+    在 Source/ 里，不参与本工程编译。见 DESIGN.md §19.17。
+  -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>RimDelegation.Prototype</RootNamespace>
+    <AssemblyName>RimDelegation.Prototype</AssemblyName>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+  </PropertyGroup>
+
+  <!--
+    计算核心**不在这里**，而是与游戏 Mod 共用同一批源文件（Source/Combat/Core）。
+    这样"原型跑的就是 mod 跑的那个核心"，不存在复制粘贴漂移。
+  -->
+  <ItemGroup>
+    <Compile Include="..\Source\Combat\Core\*.cs" LinkBase="Core" />
+  </ItemGroup>
+
+</Project>

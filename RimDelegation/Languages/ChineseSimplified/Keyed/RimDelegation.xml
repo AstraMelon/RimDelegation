@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LanguageData>
+
+  <RimDelegationTabDelegation>委派</RimDelegationTabDelegation>
+  <RimDelegationTabMorePawns>…还有 {0} 人未显示</RimDelegationTabMorePawns>
+
+  <!-- 远行队信息栏（Harmony 后置补丁）
+       ⚠️ 状态行按 worker 的 StatusKeySuffix 分键（Mining / Search / Rescue）：
+          "开采中" 与 "is mining" 的差别塞不进一个格式参数，所以分键。
+          `DelegationWorker.StatusKey()` 在后缀键不存在时会退回下面这条基础键
+          —— 所以基础键保持"开采"口径，`_Mining` 就不必重复一条。 -->
+  <RimDelegationCaravanDelegating>委派开采中。</RimDelegationCaravanDelegating>
+  <RimDelegationCaravanDelegating_Search>委派搜刮中。</RimDelegationCaravanDelegating_Search>
+  <RimDelegationCaravanDelegating_Rescue>委派营救中。</RimDelegationCaravanDelegating_Rescue>
+  <RimDelegationPawnWorking>{0} 开采中。</RimDelegationPawnWorking>
+  <RimDelegationPawnWorking_Search>{0} 搜刮中。</RimDelegationPawnWorking_Search>
+  <RimDelegationPawnWorking_Rescue>{0} 营救中。</RimDelegationPawnWorking_Rescue>
+  <RimDelegationPawnResting>{0} 休息中。（使用{1}个睡袋）</RimDelegationPawnResting>
+
+  <RimDelegationTabNoDelegation>这支队目前没有进行中的委派。</RimDelegationTabNoDelegation>
+  <RimDelegationTabTitle>委派：{0} @ {1}</RimDelegationTabTitle>
+  <RimDelegationTabMode>模式：{0} · 每天心情 {1}</RimDelegationTabMode>
+  <RimDelegationTabEndCondition>结束条件：{0} · {1}</RimDelegationTabEndCondition>
+  <RimDelegationFoodAbort>补给耗尽时中止</RimDelegationFoodAbort>
+  <!-- {0} = worker.ActivityName（开采 / 搜刮 / 营救） -->
+  <RimDelegationFoodPressOn>补给耗尽时继续{0}</RimDelegationFoodPressOn>
+
+  <!-- 量纲由 worker 给：{3} = UnitName（格 / 件 / 点）；存款行的 {5} = OutputUnitName（单位 / 件 / 人） -->
+  <RimDelegationTabRunProgress>本次进度：{0:0.#} / {1} {3}（{2}）</RimDelegationTabRunProgress>
+  <RimDelegationTabDeposit>事件点存量：全点剩余 {0}/{1} {4} · 已被委派 {2} 次 · 累计交付 {3} {5}</RimDelegationTabDeposit>
+  <RimDelegationTabPending>待交付：{0}（每小时结算一次）</RimDelegationTabPending>
+  <RimDelegationTabQuota>产出配额进度：{0} / {1}</RimDelegationTabQuota>
+  <RimDelegationTabOverweight>注意：远行队已超重，无法移动</RimDelegationTabOverweight>
+
+  <RimDelegationTabParticipants>参与人员（{0} 人）</RimDelegationTabParticipants>
+  <RimDelegationTabViewAll>查看全部 {0} 人</RimDelegationTabViewAll>
+  <RimDelegationTabTotalProgress>总进度：</RimDelegationTabTotalProgress>
+  <RimDelegationTabWorking>当前：作业中</RimDelegationTabWorking>
+  <RimDelegationTabResting>当前：休息中（不在工时段）</RimDelegationTabResting>
+  <!-- S8：状态词（叠在模式行右端，替代原来的"当前：…"独占一行） -->
+  <RimDelegationTabStatusWorking>作业中</RimDelegationTabStatusWorking>
+  <RimDelegationTabStatusResting>休息中</RimDelegationTabStatusResting>
+  <RimDelegationTabStatusPaused>已暂停</RimDelegationTabStatusPaused>
+  <RimDelegationTabStatusStalled>停摆中</RimDelegationTabStatusStalled>
+  <RimDelegationTabEta>预计剩余：{0:0.##} 天</RimDelegationTabEta>
+  <!-- S10：去掉「（1 小时 = 2500 ticks）」——玩家不需要 tick 换算，而且它让这一行超宽被截断 -->
+  <RimDelegationTabHours>累计作业 {0:0.#} 小时 / 休息 {1:0.#} 小时</RimDelegationTabHours>
+  <RimDelegationTabTimeoutPaused>原版失效倒计时：已暂停（暂停时剩余 {0:0.#} 天）</RimDelegationTabTimeoutPaused>
+  <RimDelegationTabPaused>当前：已暂停 —— 队员就地休息（不产出、不计入计划天数）</RimDelegationTabPaused>
+  <RimDelegationTabStalled>当前：停摆中（剩余 {0:0.#} 小时）—— 时间照样计入计划天数</RimDelegationTabStalled>
+  <RimDelegationTabEvents>期间发生 {0} 次随机事件</RimDelegationTabEvents>
+  <RimDelegationTabEventsOff>（随机事件已在 Mod 设置中关闭）</RimDelegationTabEventsOff>
+  <RimDelegationTabPause>暂停委派</RimDelegationTabPause>
+  <RimDelegationTabResume>继续委派</RimDelegationTabResume>
+  <RimDelegationTabAbort>中止委派</RimDelegationTabAbort>
+  <RimDelegationAbortByPlayer>玩家在远行队页签里中止</RimDelegationAbortByPlayer>
+
+  <!-- 紧急加班（§19.26）：{0} = 每次买到的额度（小时）/ 当前剩余（小时） -->
+  <RimDelegationTabOvertime>紧急加班 +{0:0.#}h</RimDelegationTabOvertime>
+  <RimDelegationTabOvertimeActive>加班中（剩 {0:0.#}h）· 再续</RimDelegationTabOvertimeActive>
+  <RimDelegationTabOvertimeCancel>结束加班</RimDelegationTabOvertimeCancel>
+
+  <!-- 「委派」主控台（S8）：屏幕底部「委派」按钮打开的浮动窗口。
+       文案风格（S8-c 用户要求）：面向玩家的**书面语**，不要开发者口吻/口语。 -->
+  <RimDelegationConsoleTitle>委派（{0} 个在途）</RimDelegationConsoleTitle>
+  <RimDelegationConsoleTitleTip>左栏列出全部进行中的委派；选取一项后，可在右侧查看详情并执行操作。窗口的位置与尺寸会被自动保留。</RimDelegationConsoleTitleTip>
+  <RimDelegationConsoleEmpty>当前没有进行中的委派。</RimDelegationConsoleEmpty>
+  <RimDelegationConsoleEmptyHint>将远行队停留在事件点后选择委派命令，或右键该地点直接下达委派。委派开始执行后，会显示在此列表中。</RimDelegationConsoleEmptyHint>
+  <RimDelegationConsoleNoSelection>尚未选择任何委派。</RimDelegationConsoleNoSelection>
+  <RimDelegationConsoleOpenTab>查看远行队页签</RimDelegationConsoleOpenTab>
+  <!-- S18：页签退化为引导页，主控台多了「待下达」以及"选中车队" -->
+  <RimDelegationConsoleSelectCaravan>选中该远行队</RimDelegationConsoleSelectCaravan>
+  <RimDelegationTabMoved>「委派」详情已经移到「委派」主控台。</RimDelegationTabMoved>
+  <RimDelegationTabMovedHint>也可以随时点屏幕底部的「委派」按钮打开（窗口的位置与尺寸会被记住）。</RimDelegationTabMovedHint>
+  <RimDelegationTabOpenConsole>打开委派主控台</RimDelegationTabOpenConsole>
+  <RimDelegationConsoleDrafts>待下达（{0}）</RimDelegationConsoleDrafts>
+  <!-- S8-b 主控台 Quest 化（皮肤版三区骨架用） -->
+  <RimDelegationConsoleTitleShort>委派</RimDelegationConsoleTitleShort>
+  <RimDelegationConsoleCounts>进行中 {0} 项 · 作业中 {1} 项 · 已暂停 {2} 项 · 前往中 {3} 项</RimDelegationConsoleCounts>
+  <RimDelegationConsoleSelection>共 {0} 项 · 当前第 {1} 项</RimDelegationConsoleSelection>
+  <RimDelegationConsoleNoMatch>没有符合条件的委派。请调整搜索关键词。</RimDelegationConsoleNoMatch>
+  <RimDelegationConsoleHours>累计作业 {0:0.#} 小时 · 休息 {1:0.#} 小时</RimDelegationConsoleHours>
+
+</LanguageData>

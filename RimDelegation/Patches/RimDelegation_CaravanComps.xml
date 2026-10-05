@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Patch>
+
+  <!--
+    S16：把「锁定」按钮挂到**每一支车队**上。
+
+    ⚠️ `Caravan` 这个 WorldObjectDef 原本**没有 comps 节点**（用 rimsearcher 查过：comps = 空），
+       所以这里是给 `defName="Caravan"` 的节点**追加一个 `<comps>` 子节点**
+       —— 不是像 SiteComps 那样往已有的 `<comps>` 里 Add（那样会因为找不到节点而整条静默失败）。
+
+    按钮本身见 WorldObjectComp_CaravanLock：锁定后，有在途委派的车队不会被右键改道带走
+    （拦截点 Caravan_PathFollower.StartPath，见 Patch_CaravanMoveLock）。
+  -->
+  <Operation Class="PatchOperationAdd">
+    <xpath>Defs/WorldObjectDef[defName="Caravan"]</xpath>
+    <value>
+      <comps>
+        <li Class="RimDelegation.WorldObjectCompProperties_CaravanLock" />
+      </comps>
+    </value>
+  </Operation>
+
+</Patch>

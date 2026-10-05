@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ModMetaData>
+  <name>RimDelegation 边缘委派</name>
+  <author>duskmelon</author>
+  <packageId>duskmelon.rimdelegation</packageId>
+  <supportedVersions>
+    <li>1.6</li>
+  </supportedVersions>
+  <description>把世界地图上的事件「委派」给车队：不用进地图、不用手动操作，车队在世界地图上按天消耗营养完成作业。
+
+两种下达方式：
+- 就地委派：车队已经停在事件点上，点车队上的委派按钮立刻开工
+- 预先委派：车队还没到，先选好人/模式，车队走到事件点后自动开工
+
+首版目标：远距离矿物扫描仪产出的矿点（PreciousLump）。
+
+工程结构说明见 DESIGN.md。</description>
+
+  <!-- 1.6 的 Managed 目录里没有 0Harmony.dll，Harmony 由 brrainz.harmony 提供 -->
+  <modDependencies>
+    <li>
+      <packageId>brrainz.harmony</packageId>
+      <displayName>Harmony</displayName>
+      <steamWorkshopUrl>steam://url/CommunityFilePage/2009463077</steamWorkshopUrl>
+    </li>
+  </modDependencies>
+
+  <loadAfter>
+    <li>brrainz.harmony</li>
+  </loadAfter>
+</ModMetaData>

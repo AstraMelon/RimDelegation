@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Defs>
+
+  <!-- ============================================================
+       野外伙食（§19.25）
+
+       原版在车队里**已经**会按 `tasteThought` 给餐食心情：
+         Thing.Ingested → FoodUtility.ThoughtsFromIngesting → TryGainMemory(tasteThought)
+         · 奢华餐 AteLavishMeal +12     · 精致餐 AteFineMeal +5
+         · 干粮   AteKibble     -12     · 生食   AteRawFood   -7
+       而且这些 ThoughtDef 的 stackLimit 默认 1 ⇒ **只刷新不叠加**，
+       所以"每天吃奢华餐"= 常驻 +12，不是 +24。
+
+       这条 Def 加的是**委派专属的第二层**：同一顿饭，除了原版那笔，再给一笔小额余味。
+       目的不是替代原版，而是把"带什么饭"变成一个能规划、能在 UI 上看到的决定。
+
+       分类不硬编码食物清单，走原版自己的两级信息：
+         ① IngestibleProperties.tasteThought（和原版心情完全同源）
+         ② IngestibleProperties.preferability（兜住没有 tasteThought 的：营养膏、简单餐、肉干）
+       ============================================================ -->
+
+  <ThoughtDef>
+    <defName>RimDelegation_Thought_FieldMeal</defName>
+    <thoughtClass>Thought_Memory</thoughtClass>
+    <stages>
+      <li>
+        <label>又啃干粮</label>
+        <description>在矿点上啃生食或者动物饲料，越吃越没劲。</description>
+        <baseMoodEffect>-2</baseMoodEffect>
+      </li>
+      <li>
+        <label>凑合一顿</label>
+        <description>野外吃饭，谈不上好也谈不上坏。</description>
+        <baseMoodEffect>0</baseMoodEffect>
+      </li>
+      <li>
+        <label>野外也吃得不错</label>
+        <description>在荒郊野外还能吃到正经做过的饭，人就不那么丧。</description>
+        <baseMoodEffect>2</baseMoodEffect>
+      </li>
+      <li>
+        <label>野外也吃得好</label>
+        <description>在矿点上还能吃上奢华餐 —— 这趟苦差事也没那么难熬。</description>
+        <baseMoodEffect>4</baseMoodEffect>
+      </li>
+    </stages>
+    <stackLimit>1</stackLimit>
+    <durationDays>1</durationDays>
+  </ThoughtDef>
+
+  <RimDelegation.DelegationFoodMoodDef>
+    <defName>RimDelegation_FoodMood_FieldMeal</defName>
+    <thought>RimDelegation_Thought_FieldMeal</thought>
+    <defaultStage>1</defaultStage>
+    <entries>
+      <!-- ① 味觉想法优先：和原版给的心情同源，不会出现"原版说好吃、我们说难吃" -->
+      <li>
+        <tasteThought>AteLavishMeal</tasteThought>
+        <stage>3</stage>
+      </li>
+      <li>
+        <tasteThought>AteFineMeal</tasteThought>
+        <stage>2</stage>
+      </li>
+      <li>
+        <tasteThought>AteKibble</tasteThought>
+        <stage>0</stage>
+      </li>
+      <li>
+        <tasteThought>AteRawFood</tasteThought>
+        <stage>0</stage>
+      </li>
+      <!-- ② 其余按原版"可接受度"档位。营养膏 = MealAwful 走这条。 -->
+      <li>
+        <preferability>MealLavish</preferability>
+        <stage>3</stage>
+      </li>
+      <li>
+        <preferability>MealFine</preferability>
+        <stage>2</stage>
+      </li>
+      <li>
+        <preferability>MealSimple</preferability>
+        <stage>1</stage>
+      </li>
+      <li>
+        <preferability>MealAwful</preferability>
+        <stage>0</stage>
+      </li>
+      <li>
+        <preferability>MealTerrible</preferability>
+        <stage>0</stage>
+      </li>
+      <li>
+        <preferability>RawBad</preferability>
+        <stage>0</stage>
+      </li>
+      <li>
+        <preferability>RawTasty</preferability>
+        <stage>0</stage>
+      </li>
+      <li>
+        <preferability>DesperateOnly</preferability>
+        <stage>0</stage>
+      </li>
+      <li>
+        <preferability>DesperateOnlyForHumanlikes</preferability>
+        <stage>0</stage>
+      </li>
+    </entries>
+  </RimDelegation.DelegationFoodMoodDef>
+
+</Defs>

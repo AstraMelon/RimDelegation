@@ -1,0 +1,237 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Defs>
+
+  <!-- ============================================================
+      委派期间的随机事件（demo）
+
+      机制（C# 侧，见 WorldObjectComp_Delegations.RollEvents）：
+        · 每游戏内 1 小时掷一次；单项触发概率 ≈ 1 / (mtbDays × 24) × weight
+        · 每小时最多触发一个事件
+        · 每个事件还各有 minDaysBetween 冷却（记在 Delegation 上，会存档）
+      下面这批 MTB 合计约 0.84 次/天 —— 大约是"一天出一次"，方便演示。
+
+      开发者模式下，选中矿点会有一排「DEV: 触发事件「XX」」按钮，可以跳过概率直接看效果。
+      ============================================================ -->
+
+  <ThoughtDef>
+    <defName>RimDelegation_Thought_EventSetback</defName>
+    <thoughtClass>Thought_Memory</thoughtClass>
+    <stages>
+      <li>
+        <label>野外作业不顺</label>
+        <description>塌方、故障、还有吵架 —— 这趟出来就没顺过。</description>
+        <baseMoodEffect>-4</baseMoodEffect>
+      </li>
+    </stages>
+    <stackLimit>1</stackLimit>
+    <durationDays>1</durationDays>
+  </ThoughtDef>
+
+  <!-- ============ 1. 塌方：埋掉已采矿石 + 停摆 ============ -->
+
+  <RimDelegation.DelegationEventDef>
+    <defName>RimDelegation_Event_CaveIn</defName>
+    <label>塌方</label>
+    <description>顶板塌落，埋掉一部分已采出但尚未运走的矿石，并让作业停顿一阵。</description>
+    <mtbDays>4</mtbDays>
+    <minDaysBetween>2</minDaysBetween>
+    <letterDef>NegativeEvent</letterDef>
+    <letterLabel>塌方</letterLabel>
+    <letterText>矿洞里传来一声闷响。</letterText>
+    <!-- S23：机制改成「条件原语 + 效果原语」的组合（原来是 DelegationEventDef_CaveIn 那个 C# 类，
+         那个类保留着可以随时切回去）。改数字/改文案从此只动 XML，**不用重新编译部署**。 -->
+    <conditions>
+      <!-- 没有已采出、还没运走的矿石时，"埋掉一部分"没有意义 -->
+      <li Class="RimDelegation.DelegationConditionDef_OreUnitsAtLeast">
+        <minUnits>5</minUnits>
+      </li>
+    </conditions>
+    <effects>
+      <li Class="RimDelegation.DelegationEffectDef_LoseOre">
+        <fraction>0.2~0.5</fraction>
+        <resultText>矿洞顶板塌了一块，已经采出但还没运回车上的一部分矿石被埋住了：损失 {0} 单位。</resultText>
+      </li>
+      <li Class="RimDelegation.DelegationEffectDef_Stall">
+        <hours>1~4</hours>
+        <resultText>清理塌方花了 {0} 小时。</resultText>
+      </li>
+    </effects>
+    <!-- ★ 内容归属：塌方是"矿洞顶板"，只对采矿委派成立。
+         不加这条的话，它会落到物资藏匿点、工作站点等任意委派上
+         —— RollEvents 遍历的是全部 DelegationEventDef。 -->
+    <onlyForDelegationDefs>
+      <li>RimDelegation_MinePreciousLump</li>
+    </onlyForDelegationDefs>
+  </RimDelegation.DelegationEventDef>
+
+  <!-- ============ 2. 发现富矿脉：事件点总规模变大 ============ -->
+
+  <RimDelegation.DelegationEventDef>
+    <defName>RimDelegation_Event_RichVein</defName>
+    <label>发现富矿脉</label>
+    <description>岩层后面露出更富的一条矿脉，事件点总规模变大（也就意味着要挖更久）。</description>
+    <mtbDays>6</mtbDays>
+    <minDaysBetween>2</minDaysBetween>
+    <letterDef>PositiveEvent</letterDef>
+    <letterLabel>发现富矿脉</letterLabel>
+    <letterText>塌落的岩层后面有东西在反光。</letterText>
+    <!-- 加成必须看矿种，否则黄金/零部件矿会被灌爆（§19.24.7）。
+         加成 = 矿点总格数 × bonusFraction，再按稀有度压制、按价值封顶、至少 minBonusUnits。 -->
+    <conditions>
+      <li Class="RimDelegation.DelegationConditionDef_DepositNotDepleted" />
+      <li Class="RimDelegation.DelegationConditionDef_ScaleIncreaseAllowed" />
+    </conditions>
+    <effects>
+      <li Class="RimDelegation.DelegationEffectDef_GainScale">
+        <bonusFraction>0.15~0.35</bonusFraction>
+        <minBonusUnits>1</minBonusUnits>
+        <maxBonusValue>1200</maxBonusValue>
+        <rarityReferenceValue>1.9</rarityReferenceValue>
+        <minRarityScale>0.25</minRarityScale>
+        <immediateFraction>0.25</immediateFraction>
+      </li>
+    </effects>
+    <!-- ★★ 这条是修 bug 的核心：富矿脉会 `deposit.totalUnits += n` 与 `d.totalCells += n`
+         —— 凭空加规模。对"规模是掷定出来的抽象格数"的采矿成立；
+         对"规模 = 现场实际件数"的物资藏匿点，加上去之后 cellsMined 永远追不上 totalCells：
+         委派永不结束、地点永不销毁、玩家进图时 GenStep_ItemStash 还会重掷一份新物资（双吃）。
+
+         两道闸都要留：
+           ① 这里的内容白名单（哪些事件属于哪种活）；
+           ② DelegationWorker.AllowsScaleIncrease（结构不变量，漏配 XML 时兜底，DEV 按钮也绕不过）。 -->
+    <onlyForDelegationDefs>
+      <li>RimDelegation_MinePreciousLump</li>
+    </onlyForDelegationDefs>
+  </RimDelegation.DelegationEventDef>
+
+  <!-- ============ 3. 设备故障 / 恶劣天气：纯时间损失 ============ -->
+
+  <RimDelegation.DelegationEventDef>
+    <defName>RimDelegation_Event_Setback</defName>
+    <label>作业受挫</label>
+    <description>工具损坏加上恶劣天气，作业停摆一段时间 —— 而且这段时间照样计入计划天数。</description>
+    <mtbDays>5</mtbDays>
+    <minDaysBetween>1.5</minDaysBetween>
+    <letterDef>NegativeEvent</letterDef>
+    <letterLabel>作业受挫</letterLabel>
+    <letterText>坏消息。</letterText>
+    <!-- S23：无条件，一条效果原语就是全部机制 -->
+    <effects>
+      <li Class="RimDelegation.DelegationEffectDef_Stall">
+        <hours>3~8</hours>
+        <resultText>工具损坏加上恶劣天气，作业停摆了 {0} 小时。这段时间照样计入计划天数。</resultText>
+      </li>
+    </effects>
+  </RimDelegation.DelegationEventDef>
+
+  <!-- ============ 4. 闹别扭：心情 ============ -->
+
+  <RimDelegation.DelegationEventDef>
+    <defName>RimDelegation_Event_Quarrel</defName>
+    <label>队伍闹别扭</label>
+    <description>为分工、为小事、为谁先去打水 —— 队伍里吵了一架，全员心情受影响。</description>
+    <mtbDays>8</mtbDays>
+    <minDaysBetween>3</minDaysBetween>
+    <letterDef>NeutralEvent</letterDef>
+    <letterLabel>队伍闹别扭</letterLabel>
+    <letterText>野外待久了，人容易上火。</letterText>
+    <!-- S23：条件原语 —— 队伍人数必须 > 3（即至少 4 人）才触发：
+         两三个人的小队闹别扭不像话，人数门槛从此在 XML 里调。 -->
+    <conditions>
+      <li Class="RimDelegation.DelegationConditionDef_ParticipantsAliveGreaterThan">
+        <min>3</min>
+      </li>
+    </conditions>
+    <effects>
+      <li Class="RimDelegation.DelegationEffectDef_Thought">
+        <thought>RimDelegation_Thought_EventSetback</thought>
+        <resultText>队伍里为这事闹了别扭，{0} 个人心情受影响。</resultText>
+      </li>
+    </effects>
+  </RimDelegation.DelegationEventDef>
+
+  <!-- ============ 5. 工伤：真的对 pawn 施加伤害 ============ -->
+
+  <RimDelegation.DelegationEventDef>
+    <defName>RimDelegation_Event_Accident</defName>
+    <label>工伤</label>
+    <description>搬运或被落石波及，有人受伤。这是唯一真正改动 pawn 健康的事件。</description>
+    <mtbDays>10</mtbDays>
+    <minDaysBetween>3</minDaysBetween>
+    <letterDef>NegativeEvent</letterDef>
+    <letterLabel>工伤</letterLabel>
+    <letterText>干活总得有人挂彩。</letterText>
+    <!-- 疲劳放大（§19.25）：这是长工时唯一的生理代价。
+         原版 NeedRest 的疲劳心情在车队里不生效（情境型 + 未写 validWhileDespawned），
+         所以必须把"累"接到事故上，否则全天候连轴转除了一个固定心情数字以外毫无后果。
+         倍率 = 1 + (maxFatigueMultiplier - 1) × Clamp01((fatigueOnsetRest - 全队平均休息) / fatigueOnsetRest)
+           倍率是**每小时掷骰那一刻**算的，所以日周期会自然体现出来。实测（40 天稳态模拟）：
+           | 模式     | 最低休息 | 倍率均值 | 倍率峰值 | 等效 MTB | 伤害均值 |
+           | 轻松工作 | 76%      | ×1.00    | ×1.00    | 10.0 天  | ×1.00    |
+           | 正常工作 | 68%      | ×1.00    | ×1.07    | 10.0 天  | ×1.00    |
+           | 加班工作 | 37%      | ×1.36    | ×2.43    | 7.4 天   | ×1.06    |
+           | 全天候   | 10%      | ×3.52    | ×3.57    | 2.8 天   | ×1.42    |
+           ⚠️ 注意别用"平均休息对应的倍率"来估：倍率是凸的分段线性函数，
+              按小时算再平均，比按平均休息算要大得多（加班：1.36 vs 1.00）。
+         伤害 = damageAmount × (1 + damageFatigueScale × 疲劳系数) -->
+    <!-- S23：概率那一半是 `chanceMultipliers` 里的一条条件原语；机制那一半是 effects 里的一条效果原语。
+         两者都带 fatigueOnsetRest —— 它们必须一致，否则"概率翻倍了但伤害没翻"这种事会静默发生。 -->
+    <conditions>
+      <li Class="RimDelegation.DelegationConditionDef_AnyAbleParticipant" />
+    </conditions>
+    <chanceMultipliers>
+      <li Class="RimDelegation.DelegationConditionDef_FatigueMultiplier">
+        <fatigueOnsetRest>0.7</fatigueOnsetRest>
+        <maxMultiplier>4</maxMultiplier>
+      </li>
+    </chanceMultipliers>
+    <effects>
+      <li Class="RimDelegation.DelegationEffectDef_Damage">
+        <damageDef>Blunt</damageDef>
+        <damageAmount>6~12</damageAmount>
+        <victims>1~1</victims>
+        <fatigueOnsetRest>0.7</fatigueOnsetRest>
+        <damageFatigueScale>0.5</damageFatigueScale>
+        <resultText>作业时出了事故：</resultText>
+      </li>
+    </effects>
+  </RimDelegation.DelegationEventDef>
+  <!-- ============ 6. 纯叙事事件（Flavor，S15）============
+
+       这类事件**没有任何机制影响**：不发 Letter、不弹 Message，只在流程块留一行 +
+       写进事件留痕（结束报告 / 历史记录里能看到）。
+       加一条只要写 Def 与台词，**不用碰代码**（基类 Apply 会从 flavorLines 随机挑一条）。
+
+       ↓ 下面两条是示例，台词随你改/删。 -->
+
+  <RimDelegation.DelegationEventDef>
+    <defName>RimDelegation_Event_FlavorSmallTalk</defName>
+    <label>闲聊</label>
+    <description>干活/赶路的间隙里聊了几句，纯叙事，没有任何机制影响。</description>
+    <severity>Flavor</severity>
+    <mtbDays>2.5</mtbDays>
+    <minDaysBetween>0.5</minDaysBetween>
+    <flavorLines>
+      <li>话题从"今晚吃什么"一路聊到了"当初为什么要出来"。</li>
+      <li>有人讲了个不太好笑的笑话，另外几个人很给面子地笑了。</li>
+      <li>为到底谁该背那口锅争了一会儿，最后决定谁都不背。</li>
+      <li>有人哼起了殖民地那首老歌，第二段没人记得。</li>
+    </flavorLines>
+  </RimDelegation.DelegationEventDef>
+
+  <RimDelegation.DelegationEventDef>
+    <defName>RimDelegation_Event_FlavorScenery</defName>
+    <label>沿途风景</label>
+    <description>路上看到的东西，纯叙事，没有任何机制影响。</description>
+    <severity>Flavor</severity>
+    <mtbDays>3</mtbDays>
+    <minDaysBetween>1</minDaysBetween>
+    <flavorLines>
+      <li>天边那片云看起来像一只倒过来的驮兽，大家一致同意。</li>
+      <li>路过一片开得过分热闹的野花，谁也没舍得踩。</li>
+      <li>有人指着远处说那边好像有东西，看了半天是块石头。</li>
+      <li>风把灰吹了满脸，有人却说这才是野外的味道。</li>
+    </flavorLines>
+  </RimDelegation.DelegationEventDef>
+
+</Defs>

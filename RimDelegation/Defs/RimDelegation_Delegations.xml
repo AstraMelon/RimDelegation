@@ -1,0 +1,1399 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Defs>
+
+  <!-- ============================================================
+       心情记忆（S4 / §19.25 重新定价）
+       全部做成"记忆型"（thoughtClass = Thought_Memory），由 C# 在
+         · 委派进行中：每天给车队里的每个人挂一次（def 基础 + 模式额外）
+         · 收工 / 中断：各挂一次结果记忆
+       这样不需要写 ThoughtWorker，也不需要全局查询谁在委派里。
+
+       ⚠️ 定价基准（实测，别凭感觉改）：
+         心情 = Clamp01(0.32 + 难度 colonistMoodOffset/100 + 想法合计/100)
+         崩溃线 = MentalBreakThreshold(默认 0.35) → 轻微 35% / 重度 20% / 极端 5%
+         也就是说"什么想法都没有"的殖民者起点是 32%，**不是 50%**。
+       ⇒ 正常工作是基线，必须是 0；只有偏离基线的模式才该有心情值。
+       ============================================================ -->
+
+  <!-- 【已停用】「野外扎营干活」-3。
+       它会让"正常工作"变成负收益（32% - 3% = 29%，已经在轻微崩溃线以下），
+       而正常工作恰恰是可持续的默认选择。现已从 RimDelegation_MinePreciousLump 上摘掉，
+       心情全部改由模式承担。保留 Def 只为让旧存档里的这条记忆还能解析出来。 -->
+  <ThoughtDef>
+    <defName>RimDelegation_Thought_DelegationCamp</defName>
+    <thoughtClass>Thought_Memory</thoughtClass>
+    <stages>
+      <li>
+        <label>野外扎营干活</label>
+        <description>我在荒郊野外扎营干活，睡不好也吃不好。</description>
+        <baseMoodEffect>-3</baseMoodEffect>
+      </li>
+    </stages>
+    <stackLimit>1</stackLimit>
+    <durationDays>1</durationDays>
+    <nullifyingPrecepts>
+      <li>RoughLiving_Welcomed</li>
+    </nullifyingPrecepts>
+  </ThoughtDef>
+
+  <!-- 轻松工作：唯一能把心情拉回安全线的模式，所以给正收益 -->
+  <ThoughtDef>
+    <defName>RimDelegation_Thought_ModeRelaxed</defName>
+    <thoughtClass>Thought_Memory</thoughtClass>
+    <stages>
+      <li>
+        <label>这趟活儿干得轻松</label>
+        <description>一天只干六小时，还能在野外晒晒太阳 —— 比在殖民地舒服。</description>
+        <baseMoodEffect>3</baseMoodEffect>
+      </li>
+    </stages>
+    <stackLimit>1</stackLimit>
+    <durationDays>1</durationDays>
+  </ThoughtDef>
+
+  <!-- 加班工作：纯"长工时"的心理成本（生理上车队不扣心情，见 §19.25） -->
+  <ThoughtDef>
+    <defName>RimDelegation_Thought_ModeOvertime</defName>
+    <thoughtClass>Thought_Memory</thoughtClass>
+    <stages>
+      <li>
+        <label>天天加班</label>
+        <description>天没亮就开工，天黑了才收工。钱是挣到了，人是麻的。</description>
+        <baseMoodEffect>-4</baseMoodEffect>
+      </li>
+    </stages>
+    <stackLimit>1</stackLimit>
+    <durationDays>1</durationDays>
+  </ThoughtDef>
+
+  <!-- 全天候工作：心情只比加班多 -2 —— 剩下的差价刻意留给"疲劳 → 工伤倍率"承担 -->
+  <ThoughtDef>
+    <defName>RimDelegation_Thought_DelegationOverwork</defName>
+    <thoughtClass>Thought_Memory</thoughtClass>
+    <stages>
+      <li>
+        <label>全天候连轴转</label>
+        <description>二十四小时轮班，人快散架了。</description>
+        <baseMoodEffect>-6</baseMoodEffect>
+      </li>
+    </stages>
+    <stackLimit>1</stackLimit>
+    <durationDays>1</durationDays>
+  </ThoughtDef>
+
+  <!-- 紧急加班（§19.26）：**递进式**惩罚 —— 同一个地点第 1/2/3/4/5+ 次各扣 4/8/12/16/20。
+       为什么用多 stage 而不是给每次加班造一条 Def：原版 MemoryThoughtHandler.TryGainMemory
+       在 `stackLimit = 1` 时会把旧的那条挤掉（反编译确认：合并失败 → Add → 超出 stackLimit 就删最旧的），
+       所以"再挂一次同 Def 的新 stage"天然等于**替换**，正好是"第 n 次加班覆盖第 n-1 次的记忆"。
+       为什么按**地点**累计而不是按委派：玩家会"中止 → 重新委派"接着干，按委派累计等于每次重置（可刷）。 -->
+  <ThoughtDef>
+    <defName>RimDelegation_Thought_EmergencyOvertime</defName>
+    <thoughtClass>Thought_Memory</thoughtClass>
+    <stages>
+      <li>
+        <label>被赶着加了一次班</label>
+        <description>收工时段被叫起来赶工。就这一次，忍了。</description>
+        <baseMoodEffect>-4</baseMoodEffect>
+      </li>
+      <li>
+        <label>又是加班</label>
+        <description>刚躺下又被叫起来。这趟活儿到底要干到什么时候？</description>
+        <baseMoodEffect>-8</baseMoodEffect>
+      </li>
+      <li>
+        <label>第三次被赶着加班</label>
+        <description>他们根本不在乎我们睡不睡。我已经开始数着还有几天能回家。</description>
+        <baseMoodEffect>-12</baseMoodEffect>
+      </li>
+      <li>
+        <label>第四次被赶着加班</label>
+        <description>我连生气都没力气了。人不是矿，挖不出第二份。</description>
+        <baseMoodEffect>-16</baseMoodEffect>
+      </li>
+      <li>
+        <label>没完没了的加班</label>
+        <description>在这个地方，休息时段只是下一个班次的名字。</description>
+        <baseMoodEffect>-20</baseMoodEffect>
+      </li>
+    </stages>
+    <stackLimit>1</stackLimit>
+    <durationDays>1</durationDays>
+  </ThoughtDef>
+
+  <ThoughtDef>
+    <defName>RimDelegation_Thought_DelegationCompleted</defName>
+    <thoughtClass>Thought_Memory</thoughtClass>
+    <stages>
+      <li>
+        <label>满载而归</label>
+        <description>这一趟委派干得漂亮，挖出来的东西堆成小山。</description>
+        <baseMoodEffect>5</baseMoodEffect>
+      </li>
+    </stages>
+    <stackLimit>1</stackLimit>
+    <durationDays>2</durationDays>
+  </ThoughtDef>
+
+  <ThoughtDef>
+    <defName>RimDelegation_Thought_DelegationAborted</defName>
+    <thoughtClass>Thought_Memory</thoughtClass>
+    <stages>
+      <li>
+        <label>白跑一趟</label>
+        <description>跑那么远的路去干活，结果半途就撤了。</description>
+        <baseMoodEffect>-6</baseMoodEffect>
+      </li>
+    </stages>
+    <stackLimit>1</stackLimit>
+    <durationDays>1</durationDays>
+  </ThoughtDef>
+
+  <!-- ============ 委派模式：工时窗口 × 速率 × 心情代价（§19.25）============
+
+       | 模式     | 工时        | 日 h-eq | 心情 | 最低休息 | 工伤倍率 |
+       | 轻松工作 | 10:00-16:00 | 5.4     | +3   | ~84%     | ×1.0     |
+       | 正常工作 | 08:00-16:00 | 8.0     | 0    | ~84%     | ×1.0     |
+       | 加班工作 | 06:00-22:00 | 17.6    | -4   | ~37%     | ×2.4     |
+       | 全天候   | 24h         | 26.4    | -6   | ~10%     | ×3.6     |
+
+       工时窗口目前是**单段**（startHour/endHour）。设计稿里的"10-12 + 14-18 含午休"
+       暂时折叠成等效连续窗口（总工时不变），因为：
+         · 车队里休息条不影响原始心情（NeedRest 对未 spawn 的 pawn 不生效）；
+         · 唯一受午休影响的是疲劳 → 工伤倍率，而那是二阶效应。
+       要真正的午休需要把 DelegationModeDef 改成窗口列表，属于独立改动。
+       ============================================================ -->
+
+  <RimDelegation.DelegationModeDef>
+    <defName>RimDelegation_Mode_Relaxed</defName>
+    <label>轻松工作</label>
+    <description>10:00 到 16:00，一天 6 小时，速率 ×0.9。唯一能回心情的模式：+3/天。产量最低，适合让刚打完仗的人缓一缓。</description>
+    <startHour>10</startHour>
+    <endHour>16</endHour>
+    <workRateMultiplier>0.9</workRateMultiplier>
+    <dailyMoodThought>RimDelegation_Thought_ModeRelaxed</dailyMoodThought>
+    <abortWhenOutOfFood>true</abortWhenOutOfFood>
+  </RimDelegation.DelegationModeDef>
+
+  <RimDelegation.DelegationModeDef>
+    <defName>RimDelegation_Mode_Normal</defName>
+    <label>常规作业</label>
+    <description>08:00 到 16:00，一天 8 小时，速率 ×1。心情不增不减 —— 这是基线，也是可以一直干下去的那个选择。</description>
+    <startHour>8</startHour>
+    <endHour>16</endHour>
+    <workRateMultiplier>1</workRateMultiplier>
+    <abortWhenOutOfFood>true</abortWhenOutOfFood>
+  </RimDelegation.DelegationModeDef>
+
+  <RimDelegation.DelegationModeDef>
+    <defName>RimDelegation_Mode_Overtime</defName>
+    <label>加班工作</label>
+    <description>06:00 到 22:00，一天 16 小时，速率 ×1.1。心情 -4/天；收工前休息条会掉到三成多，事故伤害概率在全天平均约 1.4 倍、傍晚峰值约 2.4 倍。</description>
+    <startHour>6</startHour>
+    <endHour>22</endHour>
+    <workRateMultiplier>1.1</workRateMultiplier>
+    <dailyMoodThought>RimDelegation_Thought_ModeOvertime</dailyMoodThought>
+    <abortWhenOutOfFood>true</abortWhenOutOfFood>
+  </RimDelegation.DelegationModeDef>
+
+  <RimDelegation.DelegationModeDef>
+    <defName>RimDelegation_Mode_AroundTheClock</defName>
+    <label>全天候工作</label>
+    <description>24 小时不停，速率 ×1.1。心情 -6/天；休息条永远卡在 10% 的地板上，事故伤害概率长期约 3.5 倍、伤害也放大到 1.4 倍，事故伤害平均不到 3 天就出一次。真要靠这个赶工，记得备好医药。</description>
+    <startHour>0</startHour>
+    <endHour>24</endHour>
+    <workRateMultiplier>1.1</workRateMultiplier>
+    <dailyMoodThought>RimDelegation_Thought_DelegationOverwork</dailyMoodThought>
+    <abortWhenOutOfFood>true</abortWhenOutOfFood>
+  </RimDelegation.DelegationModeDef>
+
+  <!-- ============ 固定流程阶段（§19.27）============
+
+       一条委派的"描述性固定流程"：每段有名字与固定小时数，**与速率无关**——
+       速率决定的是"作业阶段干多快"，流程决定的是"作业前后各有几段固定时间"。
+
+       `afterWork = false`（默认）= 前置阶段：在作业**之前**依次走完，期间不产出；
+       `afterWork = true`          = 收尾阶段：在**任何**收工条件成立之后才走，走完才真正收工
+                                     （中断不走走尾 —— 撤不出来是因为被打断了，这本来就该立刻结束）。
+
+       为什么做成 Def 而不是写在 worker 里：框架目标是"加 def 不加代码"，
+       而"侦察/移动/破门/撤离"这四段完全是叙事数据，不该是 C# 常量。
+       ============================================================ -->
+
+  <RimDelegation.DelegationPhaseDef>
+    <defName>RimDelegation_Phase_StashRecon</defName>
+    <label>侦察环境</label>
+    <progressLabel>正在侦察环境中…</progressLabel>
+    <!-- 多人时的"带队"口径（S14 用户要求：队伍超过 1 人时，"XXX 正在侦察环境…"看着像他一个人） -->
+    <progressLabelGroup>正在带队侦察环境…</progressLabelGroup>
+    <description>抵近观察：找个能下手的位置，看清守军与出入路线。</description>
+    <hours>1</hours>
+    <!-- S22：这一段**不可被休息时段打断**（用户原话：「正在侦察环境的时候，不会因为时段进入了休息而打断」）
+         —— 人已经摸到墙根了，停下来等天亮说不通。 -->
+    <uninterruptible>true</uninterruptible>
+    <!-- S22：小队此刻的虚拟位置（流程栏顶部那一行）。到位之前一律算「外围」。 -->
+    <squadPosition>外围</squadPosition>
+    <!-- S22：这一段的执行者 = **射击技能最高者**，名字直接显示在流程行上
+         （用户草图：「Aemeath（射击 无火 10）将带队侦察环境」）。
+         ⚠️ 技能目前只决定"谁去做 + 怎么显示"，不决定耗时（耗时挂钩是下一期）。 -->
+    <skillDef>Shooting</skillDef>
+    <!-- 阶段旁白（§19.29）：进行中从池里挑一条显示在流程块里，每 0.5h 换一条（换阶段必换）。
+         三个池的选法（S14）：**单人池 > 有敌情池 > 默认池**
+           · 默认池            = 多人 + 这个地方**没有守军**（`ItemStash` 主件 wantsThreatPoints=false 很常见）
+           · `ambientLinesSolo`    = 只有 1 个人时（"全队踩着…""有人说…"这种句子就不成立了）
+           · `ambientLinesHostile` = 真有守军时（判据 `ThreatAssessmentEntry.HasThreat`）
+         池里的 `{0}` 会替换成说话人的名字。 -->
+    <ambientLines>
+      <li>躲在暗处观察是否有奇怪的物体 —— 目前看到的最奇怪的东西是自己人。</li>
+      <li>贴着灌木丛数了半天窗子，觉得这地方的窗帘风格很可疑。</li>
+      <li>望远镜起了雾，用袖子擦了三遍，擦出了更大的雾。</li>
+      <li>屏住呼吸听了十分钟，只听见肚子在叫。</li>
+      <li>报告：屋里像是有人住过，也像是有东西在里面住过。</li>
+      <li>把侦察路线画在地图背面，然后忘了地图放哪儿了。</li>
+      <li>确认了一件事：这里的门比殖民地的厨房门结实。</li>
+      <li>绕了一圈没看到人影 —— 这地方安静得有点省事。</li>
+    </ambientLines>
+    <ambientLinesSolo>
+      <li>一个人蹲了十分钟，把能看见的窗户数了两遍。</li>
+      <li>独自摸到墙根听了听里面的动静 —— 只有自己喘气的声音。</li>
+      <li>蹲得腿麻，换了个姿势继续看 —— 结果看到的东西和刚才一样。</li>
+      <li>记下了三个出入口，回来才发现其中两个是同一扇门。</li>
+      <li>低声骂了句这地方太静，然后把路线记进脑子里。</li>
+    </ambientLinesSolo>
+    <ambientLinesHostile>
+      <li>记下了守军换岗的规律：每 40 分钟一次，而且每次都先去拿咖啡。</li>
+      <li>压着声音回报：里面有岗哨，位置在门左侧。</li>
+      <li>盯着那几个人看了很久，确认他们没有发现自己。</li>
+      <li>把守军的数量和站位都记在了地图背面。</li>
+    </ambientLinesHostile>
+  </RimDelegation.DelegationPhaseDef>
+
+  <RimDelegation.DelegationPhaseDef>
+    <defName>RimDelegation_Phase_StashMove</defName>
+    <label>移动到目标区域</label>
+    <progressLabel>正在移动到目标地点…</progressLabel>
+    <!-- 多人时改口径（S14 用户原话：队伍超过 1 人时改成"XXX 正在带领远行队"） -->
+    <progressLabelGroup>正在带领远行队移动…</progressLabelGroup>
+    <description>从落脚点摸到藏匿处，含背负装备与搬运路线的铺垫。</description>
+    <hours>2</hours>
+    <!-- S22：见上（用户原话：「正在带领小队移动的时候，不会因为时段进入了休息而打断」） -->
+    <uninterruptible>true</uninterruptible>
+    <squadPosition>外围</squadPosition>
+    <ambientLines>
+      <li>{0} 打头，队伍绕开了一片看起来不太欢迎人的沼泽。</li>
+      <li>全队踩着 {0} 的脚印前进，{0} 表示压力很大。</li>
+      <li>{0} 一边走一边清点背囊：两份补给、三份后悔。</li>
+      <li>{0} 说再走一小时就到；一小时后，{0} 说再走一小时就到。</li>
+      <li>{0} 把路线念了三遍，最后一名队员还是在看自己的鞋。</li>
+      <li>路过一片焦土，{0} 说这地方以前大概也有人这么想过。</li>
+      <li>{0} 停下来系鞋带，全队跟着停，谁也没问为什么。</li>
+    </ambientLines>
+    <ambientLinesSolo>
+      <li>{0} 一个人沿土脊走，尽量不踩出声响。</li>
+      <li>一个人赶路比队伍快 —— 也比队伍安静。</li>
+      <li>{0} 在路上歇了两次，每次都只歇很短。</li>
+      <li>{0} 把路线念给自己听，免得走岔。</li>
+      <li>{0} 回头看了一眼来路，然后继续往前走。</li>
+    </ambientLinesSolo>
+    <!-- 队伍**真有驮兽**时才用（判据 RaceProps.packAnimal）—— 否则"只有驮兽不太配合"是在说一个不存在的成员 -->
+    <ambientLinesPacked>
+      <li>队伍保持安静 —— 只有驮兽不太配合。</li>
+      <li>驮兽走得比人稳，{0} 说这话的时候有点酸。</li>
+      <li>驮兽停下来啃了口草，全队只好等着它。</li>
+    </ambientLinesPacked>
+  </RimDelegation.DelegationPhaseDef>
+
+  <RimDelegation.DelegationPhaseDef>
+    <defName>RimDelegation_Phase_StashBreach</defName>
+    <label>破门</label>
+    <progressLabel>正在破门…</progressLabel>
+    <progressLabelGroup>正在带队破门…</progressLabelGroup>
+    <description>撬开库房的门与锁，把能装车的物资清点出来。</description>
+    <hours>1</hours>
+    <!-- S22：见上（用户原话：「正在破门的时候，不会因为时段进入了休息而打断」）。
+         走完这一段，小队才算进到里面 ⇒ 位置随之变成「藏匿点内部」。 -->
+    <uninterruptible>true</uninterruptible>
+    <squadPosition>藏匿点内部</squadPosition>
+    <ambientLines>
+      <li>掏出撬棍，评估了一下这扇门的自尊心。</li>
+      <li>锁是老式的：好消息是不用炸药，坏消息是需要耐心。</li>
+      <li>试了三次 —— 第三次是因为门自己松了。</li>
+      <li>用肩膀撞门，门没动，人动了。</li>
+      <li>在门轴上抹了点机油：安静多了，也滑多了。</li>
+      <li>{0} 趴在门缝上往里看，说里面比外面黑，这不奇怪。</li>
+      <li>{0} 建议直接拆墙，被全票否决（墙比门值钱）。</li>
+      <li>{0} 数了三下才动手，其实是在数自己的心跳。</li>
+    </ambientLines>
+    <ambientLinesSolo>
+      <li>一个人扛着撬棍，试了两次才找准发力点。</li>
+      <li>{0} 用脚抵住门框、双手发力 —— 门终于让了步。</li>
+      <li>没人帮忙扶门，{0} 只好用背顶着。</li>
+      <li>{0} 停下来喘了口气，然后把撬棍又插了回去。</li>
+    </ambientLinesSolo>
+    <ambientLinesHostile>
+      <li>压着动作破门 —— 里面有人，声音越轻越好。</li>
+      <li>{0} 从门缝里看了一眼岗哨的位置，才决定从哪下撬棍。</li>
+      <li>门开了，{0} 先贴墙站定，确认没人看过来。</li>
+    </ambientLinesHostile>
+  </RimDelegation.DelegationPhaseDef>
+
+  <RimDelegation.DelegationPhaseDef>
+    <defName>RimDelegation_Phase_StashExtract</defName>
+    <label>撤离</label>
+    <progressLabel>正在撤离…</progressLabel>
+    <progressLabelGroup>正在带领远行队撤离…</progressLabelGroup>
+    <description>把物资捆扎上车、抹掉痕迹、退出这片区域。</description>
+    <hours>2</hours>
+    <afterWork>true</afterWork>
+    <!-- S22：撤离 = 已经离开目标，位置回到「外围」 -->
+    <squadPosition>外围</squadPosition>
+    <ambientLines>
+      <li>最后一个回头看了一眼，确认没落下什么。</li>
+      <li>沿原路离开，{0} 表示这次走得很体面。</li>
+      <li>把脚印抹掉了一半，另一半因为太累就算了。</li>
+      <li>{0} 走在最后，数人数数了两遍（对的，就是两遍）。</li>
+      <li>没人说话，只有负重的声音。</li>
+      <li>{0} 提议下次带个更小的箱子，没人接话。</li>
+      <li>队伍拉开了一点距离，谁都不想在这时候说话。</li>
+      <li>{0} 又回头看了一眼，这次是真的确认完了。</li>
+    </ambientLines>
+    <ambientLinesSolo>
+      <li>{0} 一个人把箱子捆好，试了试重量，然后背上。</li>
+      <li>没人帮着看背后，{0} 走一段回头一次。</li>
+      <li>{0} 抹掉了自己的脚印 —— 只有一个人的脚印，好抹。</li>
+      <li>{0} 走得比来时快，箱子比来时沉。</li>
+    </ambientLinesSolo>
+  </RimDelegation.DelegationPhaseDef>
+
+  <!-- ============================================================
+       矿点开采的固定流程（S23）
+
+       两条岔路（用户 2026-09-27 拍板，甲B 方案）：
+         · 无威胁：环境侦察 1h → 建立营地 0.5h → 开采 → 撤离 2h           （固定 3.5h）
+         · 有敌情：战术侦察 1h → 战斗评估 1h → 交战 1h → 建立营地 0.5h
+                   → 开采 → 撤离 2h                                        （固定 5.5h）
+
+       「有敌情」的判据是 `ThreatAssessmentEntry.HasThreat`（读存档里的 SitePartParams.threatPoints），
+       在**开工那一刻冻结一次**（`DelegationFlow.Freeze`）—— 进度只记下标，
+       段表若随状态变化，中途一次态变就会让下标指到别的段。
+
+       ⚠️ 加流程 = 加时间：前置段期间 worker.Tick 完全不跑（WorldObjectComp_Delegations.cs:1043），
+          并计入 ETA / 计划天数 / 超时 ⇒ 这两条流程直接推后整单工程。
+
+       「搜集战利品」段**留白**（用户明确：等模拟战斗的数据源一起定），所以有敌情那条现在是 5.5h。
+       ============================================================ -->
+
+  <RimDelegation.DelegationPhaseDef>
+    <defName>RimDelegation_Phase_MineScout</defName>
+    <label>环境侦察</label>
+    <progressLabel>正在侦察环境中…</progressLabel>
+    <progressLabelGroup>正在带队侦察环境…</progressLabelGroup>
+    <description>在外围绕一圈：地形、能站人的坡、上得去的口子。</description>
+    <hours>1</hours>
+    <!-- S23：**只在这一带没有守军时**才走这一段（另一岔是"战术侦察"） -->
+    <requireNoThreat>true</requireNoThreat>
+    <!-- 人已经摸到外围了，停下来等天亮说不通（S22 口径：侦察/移动/破门不可打断） -->
+    <uninterruptible>true</uninterruptible>
+    <squadPosition>外围</squadPosition>
+    <skillDef>Shooting</skillDef>
+    <ambientLines>
+      <li>外围绕了一圈，坡缓水浅，藏不住人，也躲不了风。</li>
+      <li>数到第五处岩缝，有人已经开始打哈欠了。</li>
+      <li>几个能上去的坡口都记下了，其中一个塌得只剩半人宽。</li>
+      <li>蹲在坡上看了很久，只有草在动，别的什么都不动。</li>
+      <li>能看的都看过一遍，又从头看了一遍，就当是散步。</li>
+    </ambientLines>
+    <ambientLinesSolo>
+      <li>一个人绕外围转一圈，坡缓水浅，没什么可藏的。</li>
+      <li>一个人数岩缝也能数岔，索性数了两遍。</li>
+      <li>坡口记下几个，蹲下来又核对一遍，免得回头记乱。</li>
+    </ambientLinesSolo>
+    <!-- 安全网：老存档没有冻结段表时，这一段也会在"有守军"的情况下跑到，
+         所以同样给一组不会说错话的句子（S14 的教训：池里写了没发生的事就是 bug）。 -->
+    <ambientLinesHostile>
+      <li>先绕着走一圈，看得见的都记下，看不见的先记在心里。</li>
+      <li>该记的都记了：坡、沟、岩壁、能上去的口子，还有谁在里面。</li>
+      <li>地形和人都看过了，剩下的事，回去再定。</li>
+    </ambientLinesHostile>
+  </RimDelegation.DelegationPhaseDef>
+
+  <RimDelegation.DelegationPhaseDef>
+    <defName>RimDelegation_Phase_MineScoutTactical</defName>
+    <label>战术侦察</label>
+    <progressLabel>正在观察守军…</progressLabel>
+    <progressLabelGroup>正在带队观察守军…</progressLabelGroup>
+    <description>抵近看清守军：岗哨位置、换岗规律、火力与退路。</description>
+    <hours>1</hours>
+    <requireThreat>true</requireThreat>
+    <!-- S28：流程分组（作战任务 / 收集任务）。判据见 `DelegationPhaseDef.InCombatFlow` ——
+         带 requireThreat 或 pauseUntilSignal 的段本来就会被判成作战，这里写出来是为了**显式**。
+         没写的段一律按"收集"归类。 -->
+    <flowCategory>Combat</flowCategory>
+    <uninterruptible>true</uninterruptible>
+    <squadPosition>外围</squadPosition>
+    <skillDef>Shooting</skillDef>
+    <!-- 这一段天然只在有守军时出现 ⇒ 默认池留空，正文写进 `ambientLinesHostile`
+         （选池顺序：单人 → 驮兽 → 有敌情 → 默认） -->
+    <ambientLinesHostile>
+      <li>两个岗哨，一个在坑口边，一个在高处，视线正好交叉。</li>
+      <li>我们离得远远的，远到只能看清人影，不敢再近一步。</li>
+      <li>等到换岗那阵松劲，才把人数数完，七个人，两个背着长家伙。</li>
+      <li>高处那个哨位最麻烦，整片空地都在他眼里。</li>
+      <li>退路记了两条，都通向东边的矮坡。</li>
+    </ambientLinesHostile>
+    <ambientLinesSolo>
+      <li>一个人盯两个岗哨，眼睛不太够用。</li>
+      <li>换岗那阵松劲只有一小会儿，得掐着时候数人。</li>
+      <li>记下哨位就不敢多待了，多待一刻就多一分险。</li>
+    </ambientLinesSolo>
+  </RimDelegation.DelegationPhaseDef>
+
+  <RimDelegation.DelegationPhaseDef>
+    <defName>RimDelegation_Phase_MineAssess</defName>
+    <label>战斗评估</label>
+    <progressLabel>正在评估守军…</progressLabel>
+    <progressLabelGroup>正在带队评估守军…</progressLabelGroup>
+    <description>把人数、火力、退路摆在一起算一遍：这一仗值不值得打。</description>
+    <hours>1</hours>
+    <requireThreat>true</requireThreat>
+    <flowCategory>Combat</flowCategory>
+    <!-- S26：**揭露守军情报的点搬到了这一段**（原来是战术侦察）。
+         用户口径：「同样地，在作业中的UI的时候，完成战术评估前就揭露了敌人」——
+         所以判据改成"战术评估走完"：侦察负责看、评估负责给出结论，两者都完事才揭晓。
+         揭露之后作战任务段立刻**自动**跑一次成算（`DelegationThreatSummary.Ensure`）。 -->
+    <revealsThreat>true</revealsThreat>
+    <!-- S26：评估一旦开始就必须做完 —— 用户报「战术评估到一半进入休息了」（原话：
+         「有的流程不应该被打断，请检查」）。判据：侦察/移动/破门/评估/交战 = 不可打断；
+         建立营地/开采/撤离 = 可以按作息停。 -->
+    <uninterruptible>true</uninterruptible>
+    <squadPosition>外围</squadPosition>
+    <!-- 评估＝分析，原版研究/分析一类活都走智识 -->
+    <skillDef>Intellectual</skillDef>
+    <ambientLinesHostile>
+      <li>人数上我们不亏，火力上他们占着高处的便宜。</li>
+      <li>正面压上去代价不小，绕后要多花半天，两边都不轻松。</li>
+      <li>退路有两条，都不宽，撤的时候容易挤在一处。</li>
+      <li>他们的掩体比我们多，可彼此离得远，能一个一个来。</li>
+      <li>结论是能打，只是打完得养几天，值不值另说。</li>
+    </ambientLinesHostile>
+  </RimDelegation.DelegationPhaseDef>
+
+  <RimDelegation.DelegationPhaseDef>
+    <defName>RimDelegation_Phase_MineEngage</defName>
+    <label>交战</label>
+    <progressLabel>正在交火…</progressLabel>
+    <progressLabelGroup>正在带队交火…</progressLabelGroup>
+    <description>交火、压制、清点、包扎 —— 这一段的 1 小时是叙事耗时，胜负在进入这一段时就结算完了。</description>
+    <hours>1</hours>
+    <requireThreat>true</requireThreat>
+    <flowCategory>Combat</flowCategory>
+    <!-- S25：**进入这一段之前要等玩家下令**（`engage`）。
+         用户口径：「完成侦察任务后，先自动进行战斗评估；然后远行队进入休息状态，
+         作战任务UI里面添加 进行交战 和 撤退选项」。
+         流程停在它跟前 ⇒ `Delegation.IsWorkTime` 为假 ⇒ 队伍就地待命（照常计休息）；
+         点「进行交战」下达 engage 之后，下一 tick 进入这一段并触发 onEnter（战斗结算在那里）。 -->
+    <pauseUntilSignal>engage</pauseUntilSignal>
+    <!-- S26：战斗在**进入这一段的那一刻**就结算完了，但结果要等这一段走完才公布。
+         用户口径：「交战流程完成前，结果就出来了，需要等待交战结束再出结果」。
+         ⚠️ 写 Def 注释时**绝不能出现两个连续的减号**（原话里那种双破折号也不行）：
+         XML 注释禁止这个字符对，出现一次就会让**整份 Def 文件解析失败** ——
+         S26 就因此让整个「委派」功能消失过一次（`DelegationDef 0 个`、右键没有委派选项）。
+         改完 Def 一定先跑 `tools\Check-DefsXml.ps1`（它专门抓这一类问题）。 -->
+    <deferNoteUntilDone>true</deferNoteUntilDone>
+    <!-- 打起来不会因为到了休息时段就停手 -->
+    <uninterruptible>true</uninterruptible>
+    <squadPosition>矿点</squadPosition>
+    <!-- ★ S23 段进入钩子：进入这一段的那一刻跑一次模拟战斗（不是每 tick）。
+         与营救的清场同款：种子记进 d.rolledValue，伤亡**真的**施加到参与者身上。
+         打输 ⇒ 设 `d.flowAbortReason` ⇒ 宿主立刻 Abort（用户拍板：交战失败走 Abort）。 -->
+    <onEnter>
+      <li Class="RimDelegation.DelegationEffectDef_ResolveCombat" />
+    </onEnter>
+    <ambientLinesHostile>
+      <li>那段时间没人说得清，枪声起起落落，然后忽然就停了。</li>
+      <li>中间有一阵很难熬，等烟吹散了，事情也就结束了。</li>
+      <li>再抬头的时候对面已经安静，我们这边有人按着胳膊。</li>
+      <li>那段时间很长，长到够包扎，也短到来不及害怕。</li>
+      <li>事后清点，弹药比预想的花得多，人都在，算是运气。</li>
+    </ambientLinesHostile>
+  </RimDelegation.DelegationPhaseDef>
+
+  <RimDelegation.DelegationPhaseDef>
+    <defName>RimDelegation_Phase_MineLoot</defName>
+    <label>搜集战利品</label>
+    <progressLabel>正在搜集战利品…</progressLabel>
+    <progressLabelGroup>正在带队搜集战利品…</progressLabelGroup>
+    <description>把打掉的守军身上还能用的东西清点、拆下来、捆上车。只算留在战场上的那些（跑掉的把东西带走了）。</description>
+    <hours>0.5</hours>
+    <!-- S30：用户 2026-09-28 拍板「搜集战利品」段**单开一段**、插在交战段之后、建立营地之前。
+         只有真有守军的那条岔路才有这一段（没打过仗就没有战利品可捡）。 -->
+    <requireThreat>true</requireThreat>
+    <!-- 与交战段同一条规矩（S26 立的）：结果等这一段走完再公布 -->
+    <deferNoteUntilDone>true</deferNoteUntilDone>
+    <ambientLines>
+      <li>枪先卸弹匣，弹匣归一处，回头好数。</li>
+      <li>能用的都堆在一块：枪、甲，还有半袋没人认领的干粮。</li>
+      <li>靴子也有人扒，走远路的人最懂靴子的价钱。</li>
+      <li>值钱的先上车，剩下的看载重说话。</li>
+      <li>连弹壳都收拾干净，免得留下痕迹。</li>
+    </ambientLines>
+    <ambientLinesSolo>
+      <li>一个人搬不动那么多，来回跑了几趟。</li>
+      <li>值钱的先挑出来，剩下的实在带不走。</li>
+    </ambientLinesSolo>
+    <onEnter>
+      <li Class="RimDelegation.DelegationEffectDef_GainLoot" />
+    </onEnter>
+  </RimDelegation.DelegationPhaseDef>
+
+  <RimDelegation.DelegationPhaseDef>
+    <defName>RimDelegation_Phase_MineCamp</defName>
+    <label>建立营地</label>
+    <progressLabel>正在建立营地…</progressLabel>
+    <progressLabelGroup>正在带队建立营地…</progressLabelGroup>
+    <description>支帐篷、生火、清点补给、排轮班。等同于工作，照常消耗休息值。</description>
+    <hours>0.5</hours>
+    <!-- 两条岔路都有这一段（所以**不写**任何条件） -->
+    <squadPosition>矿点营地</squadPosition>
+    <skillDef>Construction</skillDef>
+    <ambientLines>
+      <li>帐篷支在背风的坡下，火堆离得远一点，免得招眼睛。</li>
+      <li>补给按天分好，那袋咸肉留到最后再动。</li>
+      <li>火生起来，水烧上，一天里总算有个像样的时刻。</li>
+      <li>排了轮班，头一班归最不困的那个。</li>
+      <li>湿衣服挂在火边，明天走的时候记得收。</li>
+      <li>先把水找着，别的都好说。</li>
+      <li>帐篷朝哪边开有讲究，风从哪边来就往哪边背。</li>
+      <li>东西各归各位，夜里伸手就能摸到要用的。</li>
+    </ambientLines>
+    <ambientLinesSolo>
+      <li>一个人支帐篷，风一吹就歪，扶了三次才立住。</li>
+      <li>火生起来，水烧上，一个人坐着也算有个像样的时刻。</li>
+      <li>补给按天分好，就一袋咸肉，留到最后再动。</li>
+    </ambientLinesSolo>
+    <ambientLinesHostile>
+      <li>营地扎在背风又背人的一侧，火只在做饭的时候升。</li>
+      <li>帐篷不挨着摆，夜里真出事，不至于一起醒不过来。</li>
+      <li>火堆离得远一点，烟散得快，免得招眼睛。</li>
+    </ambientLinesHostile>
+  </RimDelegation.DelegationPhaseDef>
+
+  <RimDelegation.DelegationPhaseDef>
+    <defName>RimDelegation_Phase_MineExtract</defName>
+    <label>撤离</label>
+    <progressLabel>正在撤离…</progressLabel>
+    <progressLabelGroup>正在带领远行队撤离…</progressLabelGroup>
+    <description>收起营地、装车、把痕迹压掉，退出这一带。</description>
+    <hours>2</hours>
+    <afterWork>true</afterWork>
+    <squadPosition>外围</squadPosition>
+    <ambientLines>
+      <li>帐篷收了，火压灭，地上不留一点还热的东西。</li>
+      <li>装车的时候又数了一遍，工具、绳子、剩下的口粮，都在。</li>
+      <li>走之前绕营地转了一圈，看看有没有落下的。</li>
+      <li>车出坡口的时候，有人回头看了一眼那个坑。</li>
+      <li>路照旧难走，但心里比来时轻，活算是干完了。</li>
+    </ambientLines>
+    <ambientLinesSolo>
+      <li>帐篷折起来比支起来快，一个人也能收拾利索。</li>
+      <li>装车时又数一遍，工具、绳子、剩下的口粮，都在。</li>
+      <li>走之前回头看了一眼那个坑，然后就没再看。</li>
+    </ambientLinesSolo>
+  </RimDelegation.DelegationPhaseDef>
+
+  <!-- ============ 工作站点（Ideology WorkSite_*）的流程段 ============
+
+       2026-09-30 用户拍板「工作站＝乙档：清场 + 搬运」。七个段照矿点那条的路子写：
+       前置「侦察/观察/评估/待命/交战/搜集/扎营」走完才开主作业（= 搬空营地仓储），
+       收工条件成立后再走收尾「撤离」。
+
+       与矿点的两点差别（都有反编译依据）：
+         · 守军是**两批**（劳工半额 + 战斗员半额，同一 group-maker 种子）—— 见
+           ThreatRosterFactory.GenerateWorkSiteGuards，照抄 GenStep_WorkSitePawns。
+         · 主作业的速率单开一档 0.5 趟/作业小时（营地是开阔场地，不是 7×7 密室）——
+           见 DelegationWorker_WorkSite.CampHaulTripsPerWorkHour。
+       ============================================================ -->
+
+  <RimDelegation.DelegationPhaseDef>
+    <defName>RimDelegation_Phase_WorkScout</defName>
+    <label>外围侦察</label>
+    <progressLabel>正在侦察营地外围…</progressLabel>
+    <progressLabelGroup>正在带队侦察营地外围…</progressLabelGroup>
+    <description>绕营地外围走一圈：出入口、围栏缺口、能俯瞰全营的高地。</description>
+    <hours>1</hours>
+    <!-- 只在**没有守军**时走这一段（工作站的威胁点数下限是 350，所以这一段几乎不出现；
+         留着是为了"某个模组把威胁点数配成 0"时流程仍然成立）。 -->
+    <requireNoThreat>true</requireNoThreat>
+    <uninterruptible>true</uninterruptible>
+    <squadPosition>外围</squadPosition>
+    <skillDef>Shooting</skillDef>
+    <ambientLines>
+      <li>营地外围绕了一圈，木材堆得比人高，堆场边上的路都被压平了。</li>
+      <li>围栏有几处是后来补的，补得比原来矮一截。</li>
+      <li>炊烟的位置说明他们住的比干活的地方靠里。</li>
+      <li>高处那块坡能看进整个营地，就是上去要绕远。</li>
+      <li>数清了几个出入口，其中一个正对着堆场。</li>
+    </ambientLines>
+    <ambientLinesSolo>
+      <li>一个人绕外围绕了很久，把每一处缺口都记了下来。</li>
+      <li>坡上蹲了一会儿，风大，记完就下来了。</li>
+      <li>一个人看营地，看得仔细，也看得慢。</li>
+    </ambientLinesSolo>
+    <ambientLinesHostile>
+      <li>外围看了一圈，人也看了，堆场也看了，两样都不少。</li>
+      <li>看得见的都记下了，看不见的先记在心里。</li>
+      <li>营地不小，堆场更大，回去再算。</li>
+    </ambientLinesHostile>
+  </RimDelegation.DelegationPhaseDef>
+
+  <RimDelegation.DelegationPhaseDef>
+    <defName>RimDelegation_Phase_WorkObserve</defName>
+    <label>观察营地</label>
+    <progressLabel>正在观察营地守军…</progressLabel>
+    <progressLabelGroup>正在带队观察营地守军…</progressLabelGroup>
+    <description>抵近看清：几个岗哨、换岗规律、干活的人和拿家伙的人各有多少。</description>
+    <hours>1</hours>
+    <requireThreat>true</requireThreat>
+    <flowCategory>Combat</flowCategory>
+    <uninterruptible>true</uninterruptible>
+    <squadPosition>外围</squadPosition>
+    <skillDef>Shooting</skillDef>
+    <!-- 这一段天然只在有守军时出现 ⇒ 默认池留空，正文写进 ambientLinesHostile
+         （选池顺序：单人 → 驮兽 → 有敌情 → 默认） -->
+    <ambientLinesHostile>
+      <li>干活的人和拿家伙的人不是一批：多数人手里是斧子。</li>
+      <li>两个岗哨，一个在门口，一个在堆场边，视线正好错开。</li>
+      <li>换岗那阵松劲只有一小会儿，掐着时候才把人数数完。</li>
+      <li>营地中间那间屋子进出的都是同一个人，大概是管事的。</li>
+      <li>退路记了两条，都通向外围的矮坡。</li>
+    </ambientLinesHostile>
+    <ambientLinesSolo>
+      <li>一个人盯两个岗哨，眼睛不太够用。</li>
+      <li>数到一半有人朝这边看，只好先低下头。</li>
+      <li>记完哨位就不敢多待了。</li>
+    </ambientLinesSolo>
+  </RimDelegation.DelegationPhaseDef>
+
+  <RimDelegation.DelegationPhaseDef>
+    <defName>RimDelegation_Phase_WorkAssess</defName>
+    <label>战斗评估</label>
+    <progressLabel>正在评估守军…</progressLabel>
+    <progressLabelGroup>正在带队评估守军…</progressLabelGroup>
+    <description>把人数、火力、退路摆在一起算一遍：这一仗值不值得打。</description>
+    <hours>1</hours>
+    <requireThreat>true</requireThreat>
+    <flowCategory>Combat</flowCategory>
+    <!-- 守军情报在这一段走完才揭晓（与矿点、营救同一条口径）：
+         揭露之后作战任务段才会跑一次成算，也才会出现「进行交战 / 撤退」两颗按钮。 -->
+    <revealsThreat>true</revealsThreat>
+    <uninterruptible>true</uninterruptible>
+    <squadPosition>外围</squadPosition>
+    <skillDef>Intellectual</skillDef>
+    <ambientLinesHostile>
+      <li>人数上我们不亏，可他们守着自己堆起来的木料，掩体比我们多。</li>
+      <li>正面压进去代价不小，绕后要多花半天，两边都不轻松。</li>
+      <li>他们拿家伙的只有一半，另一半大概会往屋里躲。</li>
+      <li>结论是能打，只是打完得养几天，值不值另说。</li>
+    </ambientLinesHostile>
+  </RimDelegation.DelegationPhaseDef>
+
+  <RimDelegation.DelegationPhaseDef>
+    <defName>RimDelegation_Phase_WorkEngage</defName>
+    <label>交战</label>
+    <progressLabel>正在交火…</progressLabel>
+    <progressLabelGroup>正在带队交火…</progressLabelGroup>
+    <description>交火、压制、清点、包扎：这一段的 1 小时是叙事耗时，胜负在进入这一段时就结算完了。</description>
+    <hours>1</hours>
+    <requireThreat>true</requireThreat>
+    <flowCategory>Combat</flowCategory>
+    <!-- 进入这一段之前等玩家下令（engage）：流程停在它跟前 ⇒ 队伍就地待命，
+         点「进行交战」之后下一 tick 才进这一段并触发 onEnter（战斗在那里结算）。 -->
+    <pauseUntilSignal>engage</pauseUntilSignal>
+    <!-- 战斗在进入那一刻就结算完了，结果等这一段走完再公布。 -->
+    <deferNoteUntilDone>true</deferNoteUntilDone>
+    <uninterruptible>true</uninterruptible>
+    <squadPosition>营地外围</squadPosition>
+    <!-- 段进入钩子：跑一次无地图战斗（不是每 tick）。种子记进 d.rolledValue，
+         伤亡真的施加到参与者身上；打输 ⇒ 设 flowAbortReason ⇒ 宿主立刻 Abort。 -->
+    <onEnter>
+      <li Class="RimDelegation.DelegationEffectDef_ResolveCombat" />
+    </onEnter>
+    <ambientLinesHostile>
+      <li>那段时间没人说得清，枪声起起落落，然后忽然就停了。</li>
+      <li>木料堆成了掩体，也成了靶子，两边都往那后面躲。</li>
+      <li>再抬头的时候对面已经安静，我们这边有人按着胳膊。</li>
+      <li>有人从屋里出来举手，被按住的时候还在说自己是干活的。</li>
+      <li>事后清点，弹药比预想的花得多，人都在，算是运气。</li>
+    </ambientLinesHostile>
+  </RimDelegation.DelegationPhaseDef>
+
+  <RimDelegation.DelegationPhaseDef>
+    <defName>RimDelegation_Phase_WorkLoot</defName>
+    <label>搜集战利品</label>
+    <progressLabel>正在搜集战利品…</progressLabel>
+    <progressLabelGroup>正在带队搜集战利品…</progressLabelGroup>
+    <description>把打掉的守军身上还能用的东西清点、拆下来、捆上车。只算留在战场上的那些。</description>
+    <hours>0.5</hours>
+    <requireThreat>true</requireThreat>
+    <!-- 与交战段同一条规矩：结果等这一段走完再公布 -->
+    <deferNoteUntilDone>true</deferNoteUntilDone>
+    <ambientLines>
+      <li>枪先卸弹匣，弹匣归一处，回头好数。</li>
+      <li>干活的人身上没什么值钱的，拿家伙的身上倒是有。</li>
+      <li>斧子和锯子也顺手收了，反正是能用的东西。</li>
+      <li>值钱的先上车，剩下的看载重说话。</li>
+    </ambientLines>
+    <ambientLinesSolo>
+      <li>一个人搬不动那么多，来回跑了几趟。</li>
+      <li>值钱的先挑出来，剩下的实在带不走。</li>
+    </ambientLinesSolo>
+    <onEnter>
+      <li Class="RimDelegation.DelegationEffectDef_GainLoot" />
+    </onEnter>
+  </RimDelegation.DelegationPhaseDef>
+
+  <RimDelegation.DelegationPhaseDef>
+    <defName>RimDelegation_Phase_WorkCamp</defName>
+    <label>就地扎营</label>
+    <progressLabel>正在建立营地…</progressLabel>
+    <progressLabelGroup>正在带队建立营地…</progressLabelGroup>
+    <description>把临时营地扎在堆场边上：支帐篷、生火、清点补给、排轮班。等同于工作，照常消耗休息值。</description>
+    <hours>0.5</hours>
+    <!-- 两条岔路都有这一段（所以不写任何条件） -->
+    <squadPosition>营地</squadPosition>
+    <skillDef>Construction</skillDef>
+    <ambientLines>
+      <li>帐篷支在堆场的背风面，搬东西不用绕远。</li>
+      <li>把他们码好的木料借来垫平地面，用完再还回去。</li>
+      <li>补给按天分好，那袋咸肉留到最后再动。</li>
+      <li>排了轮班，头一班归最不困的那个。</li>
+      <li>火生起来，水烧上，一天里总算有个像样的时刻。</li>
+    </ambientLines>
+    <ambientLinesSolo>
+      <li>一个人支帐篷，风一吹就歪，扶了三次才立住。</li>
+      <li>一个人坐着烤火，也算有个像样的时刻。</li>
+      <li>补给按天分好，就一袋咸肉，留到最后再动。</li>
+    </ambientLinesSolo>
+    <ambientLinesHostile>
+      <li>营地扎在背风又背人的一侧，火只在做饭的时候升。</li>
+      <li>帐篷不挨着摆，夜里真出事，不至于一起醒不过来。</li>
+      <li>把他们的哨位重新看了一遍，确认没有漏掉的。</li>
+    </ambientLinesHostile>
+  </RimDelegation.DelegationPhaseDef>
+
+  <RimDelegation.DelegationPhaseDef>
+    <defName>RimDelegation_Phase_WorkExtract</defName>
+    <label>撤离</label>
+    <progressLabel>正在撤离…</progressLabel>
+    <progressLabelGroup>正在带领远行队撤离…</progressLabelGroup>
+    <description>收起帐篷、装车、把痕迹压掉，退出这一带。</description>
+    <hours>1</hours>
+    <afterWork>true</afterWork>
+    <squadPosition>外围</squadPosition>
+    <ambientLines>
+      <li>帐篷收了，火压灭，地上不留一点还热的东西。</li>
+      <li>装车的时候又数了一遍：工具、绳子、剩下的口粮，都在。</li>
+      <li>走之前绕营地转了一圈，看看有没有落下的。</li>
+      <li>车出营门的时候，有人回头看了一眼那堆没搬完的木料。</li>
+    </ambientLines>
+    <ambientLinesSolo>
+      <li>帐篷折起来比支起来快，一个人也能收拾利索。</li>
+      <li>装车时又数一遍，工具、绳子、剩下的口粮，都在。</li>
+      <li>走之前回头看了一眼那堆木料，然后就没再看。</li>
+    </ambientLinesSolo>
+  </RimDelegation.DelegationPhaseDef>
+
+  <!-- ============ 第一条委派：矿点开采 ============ -->
+
+  <RimDelegation.DelegationDef>
+    <defName>RimDelegation_MinePreciousLump</defName>
+    <!-- 刻意**不带「远程」**：车队是真的开到 Site 上作业的，不是隔空遥控。
+         玩家可见的每一处都由这一条 label（或各自的 commandLabel）生成。 -->
+    <label>开采</label>
+    <!-- S9 用户给的原文（照录，不改措辞）：
+         "委派矿点任务给远行队，远行队的殖民者会在矿点扎营并且进行开采任务，完成任务后自行撤离并待命。"
+         ⚠️ 「完成任务后自行撤离并待命」目前是**叙事口径**：实机行为是收工后就地待命，
+            不会自动离开事件点（用户 2026-09-26 明确选择"只改文案，不加行为"）。 -->
+    <description>委派矿点任务给远行队，远行队的殖民者会在矿点扎营并且进行开采任务，完成任务后自行撤离并待命。</description>
+    <workerClass>RimDelegation.DelegationWorker_Mining</workerClass>
+
+    <targetSitePartTags>
+      <li>PreciousLump</li>
+    </targetSitePartTags>
+
+    <commandLabel>委派：开采 {0}</commandLabel>
+    <commandDesc>派远行队在这个矿点上扎营开采，不需要进入地图。</commandDesc>
+    <planningLabel>前往委派开采</planningLabel>
+    <planningReportString>正在前往 {0} 执行委派开采</planningReportString>
+
+    <minPawns>1</minPawns>
+    <maxPawns>12</maxPawns>
+    <skillDef>Mining</skillDef>
+
+    <!-- 主作业段旁白（§19.29）：主作业**不是** flowPhases（它按速率推进、没有固定时长），
+         所以它的旁白只能挂在委派 Def 上。挖矿是集体动作 ⇒ 说话人用"全队"。 -->
+    <workSpeakerMode>All</workSpeakerMode>
+    <workAmbientLines>
+      <li>镐头落下去，石屑溅了一脸，矿脉看着比刚才更值钱了。</li>
+      <li>已经数不清这是第几块，只知道背囊越来越沉。</li>
+      <li>有人说这矿质不错，没人接话 —— 大家都在抡镐。</li>
+      <li>{0} 停下来敲了敲岩壁，说里面还有，然后接着挖。</li>
+      <li>粉尘大得看不清彼此，只能靠咳嗽声确认队友还在。</li>
+      <li>{0} 把第一块矿石放在旁边当"幸运石"，后来忘了哪块是。</li>
+      <li>换了个角度继续 —— 因为上一镐卡住了。</li>
+      <li>提议休息，得到的回应是更响的敲击声。</li>
+    </workAmbientLines>
+    <!-- 休息时段（S16）：工时窗口之外把"休息"置顶显示，这几句就是"休息中的内容" -->
+    <restAmbientLines>
+      <li>有人已经睡着了，鼾声比白天的镐声还规律。</li>
+      <li>篝火边还在聊，话题从明天干什么飘到了从前干过什么。</li>
+      <li>把外衣垫在头下，说这样比睡袋舒服。</li>
+      <li>有人问了一句"明天几点起"，没人回答 —— 都睡了。</li>
+      <li>睡前的闲聊慢慢变成了呼吸声。</li>
+    </restAmbientLines>
+    <workAmbientLinesSolo>
+      <li>{0} 一个人抡镐，石屑打在靴子上。</li>
+      <li>没有第二个人换手，{0} 就自己换了个姿势继续。</li>
+      <li>{0} 把挖出来的矿石堆成一堆 —— 只有一堆。</li>
+      <li>一个人挖矿，连回音都显得多余。</li>
+    </workAmbientLinesSolo>
+
+    <!-- S23：矿点的固定流程（两条岔路，见文件上方那段说明）。
+         顺序即执行顺序；带条件的段（`requireThreat` / `requireNoThreat`）在**开工那一刻**
+         按该地点的敌情过滤一次并冻结，之后这次委派就按它走到底。 -->
+    <flowPhases>
+      <li>RimDelegation_Phase_MineScout</li>
+      <li>RimDelegation_Phase_MineScoutTactical</li>
+      <li>RimDelegation_Phase_MineAssess</li>
+      <li>RimDelegation_Phase_MineEngage</li>
+      <!-- S30：缴获段紧接交战之后（用户 2026-09-28 拍板的位置） -->
+      <li>RimDelegation_Phase_MineLoot</li>
+      <li>RimDelegation_Phase_MineCamp</li>
+      <li>RimDelegation_Phase_MineExtract</li>
+    </flowPhases>
+
+    <!-- S23：主作业（开采）时小队所处的位置 —— 流程栏顶部那一行 -->
+    <workSquadPosition>矿点</workSquadPosition>
+
+    <modes>
+      <li>RimDelegation_Mode_Relaxed</li>
+      <li>RimDelegation_Mode_Normal</li>
+      <li>RimDelegation_Mode_Overtime</li>
+      <li>RimDelegation_Mode_AroundTheClock</li>
+    </modes>
+    <defaultMode>RimDelegation_Mode_Normal</defaultMode>
+
+    <handleTargetTimeout>Pause</handleTargetTimeout>
+    <destroyTargetOnComplete>true</destroyTargetOnComplete>
+    <abortIfCaravanLeavesTile>true</abortIfCaravanLeavesTile>
+
+    <!-- ★ 存量一致性：委派按 GenStep 的公式**独立推算**格数，而原版只在真正生成地图时
+         才掷一次（GenStep_PreciousLump 的 totalValueRange.RandomInRange）—— 两次独立掷骰。
+         没取空就进图 ⇒ 玩家能再挖一份 = 双吃（DESIGN §7.1 自认未堵）。
+
+         这里用**原版自己的** EnterCooldownComp 把"被动过的矿点"封禁进入：
+         CaravanArrivalAction_VisitSite.CanVisit → site.EnterCooldownBlocksEntering()，
+         菜单项由原版灰掉、提示也是原版的 ⇒ 零 Harmony。
+         一点没动过（unitsMined == 0）不封禁，避免"看一眼就取消"也被罚。 -->
+    <blockMapEntryAfterWorked>true</blockMapEntryAfterWorked>
+    <blockMapEntryDays>9999</blockMapEntryDays>
+
+    <defaultEndCondition>UntilDepleted</defaultEndCondition>
+    <maxDaysLimit>30</maxDaysLimit>
+
+    <!-- 紧急加班（§19.26）：每次点「紧急加班」买 4 小时"无视工时窗口"的额度，可续。
+         心情是**递进**的：同一个地点第 n 次加班挂第 n 级心情记忆（-4/-8/-12/…）。
+         代价还有一条不在 Def 上：加班时段不会补休息 → 休息条下降 → 工伤倍率上浮。 -->
+    <emergencyOvertimeHoursPerUse>4</emergencyOvertimeHoursPerUse>
+    <emergencyOvertimeMoodThought>RimDelegation_Thought_EmergencyOvertime</emergencyOvertimeMoodThought>
+
+    <!-- 刻意不设 dailyMoodThought：心情全部由模式承担（见上面的定价基准）。
+         再加一条"野外扎营 -3"会把基线做成负收益。 -->
+    <completeMoodThought>RimDelegation_Thought_DelegationCompleted</completeMoodThought>
+    <abortMoodThought>RimDelegation_Thought_DelegationAborted</abortMoodThought>
+
+    <startLetterLabel>委派开始：开采</startLetterLabel>
+    <startLetterText>{0} 的委派开采已开始。\n\n模式：{1}\n人员：{2} 人</startLetterText>
+    <completeLetterLabel>委派收工：开采</completeLetterLabel>
+    <completeLetterText>{0} 的委派开采已收工：{1}\n\n{2}\n\n{3}</completeLetterText>
+    <abortLetterLabel>委派中断</abortLetterLabel>
+    <abortLetterText>{0} 的委派开采已中断：{1}\n\n{2}</abortLetterText>
+  </RimDelegation.DelegationDef>
+
+  <!-- ============ 第二条委派：物资藏匿点搜刮 ============
+
+       与矿点的关键差别（均已实机核实，见 DESIGN.md 与 ItemStash-可行性评估.md）：
+         · 物资在【任务生成那一刻】就已经是实物，存在 SitePart.things 里并随存档持久化
+           （SitePartWorker_ItemStash.Notify_GeneratedByQuestGen + SitePart.ExposeData 的
+             Scribe_Deep.Look(ref things, "things", this)）
+           ⇒ 不生成地图就能读到，而且规模在抵达前就是**精确值**（矿点只能给区间）。
+         · 速率按【负重】算，不按件数：预算 = Σ MassUtility.Capacity(pawn) × 0.25 趟/小时。
+           "件"只是进度单位 —— 离散物件必须用整数单位，否则 totalCells(int) 的收尾余量永远凑不满。
+         · 车队装满即收工（DelegationWorker_TakeItemStash.WorkerEndReason）。
+           没取空 ⇒ 地点不销毁、原版失效计时恢复，剩下的留在原地，卸完货可以回来接着委派。
+         · destroyTargetOnComplete 必须为 true：part.things 空掉之后若还进图，
+           GenStep_ItemStash 会走 thingSetMakerDef 分支**重掷一份全新物资**（双吃）。
+         · skillDef 刻意留空：原版搬运不给经验。想给就在下面填，系数见
+           DelegationWorker_TakeItemStash.XpPerTick。
+       ============================================================ -->
+
+  <RimDelegation.DelegationDef>
+    <defName>RimDelegation_TakeItemStash</defName>
+    <label>搜刮</label>
+    <description>将物资藏匿点委派给远行队：队伍将在目标区域执行破拆、清点与装载作业，按日消耗补给；待物资清空或运力满载后结束任务。</description>
+    <workerClass>RimDelegation.DelegationWorker_TakeItemStash</workerClass>
+
+    <!-- 主作业段（= 装车）的旁白（§19.29）：物资点的主作业不是 flowPhases，
+         前置"侦察/移动/破门"与收尾"撤离"的旁白在各自的 DelegationPhaseDef 上。 -->
+    <workSpeakerMode>All</workSpeakerMode>
+    <workAmbientLines>
+      <li>已经算不清往返了几趟，但记得每一趟都更沉一点。</li>
+      <li>把最值钱的那箱放在最上面，理由是这样最显眼。</li>
+      <li>封条比预想的结实，随后用更结实的力气解决了它。</li>
+      <li>全队开始怀疑这些东西到底是谁囤的、囤了多久、为什么囤这么多。</li>
+      <li>{0} 提议先搬贵重的 —— 全票通过。</li>
+      <li>{0} 在箱子底下发现一张清单，上面写着"清单"两个字。</li>
+      <li>{0} 说这些箱子比看起来重，然后又搬起了下一箱。</li>
+    </workAmbientLines>
+    <restAmbientLines>
+      <li>有人已经睡着了，鼾声比白天的装卸声还规律。</li>
+      <li>帐篷里还在聊今天搬了多少箱，聊着聊着就变成了嘟囔。</li>
+      <li>{0} 把外套垫在头下，说这样比睡袋舒服。</li>
+      <li>有人问了一句"明天几点开工"，没人回答 —— 都睡了。</li>
+      <li>睡前的闲聊慢慢变成了呼吸声。</li>
+    </restAmbientLines>
+    <workAmbientLinesSolo>
+      <li>{0} 一个人来回搬，来回的次数自己都记不清了。</li>
+      <li>没人搭手，{0} 把箱子一个个挪到车边。</li>
+      <li>{0} 歇了一会儿，然后又搬起下一箱。</li>
+      <li>一个人搬这些东西确实慢，但没人催。</li>
+    </workAmbientLinesSolo>
+    <!-- 队伍**真有驮兽**时才用（判据 RaceProps.packAnimal） -->
+    <workAmbientLinesPacked>
+      <li>驮兽表示它只负责背，不负责搬。</li>
+      <li>驮兽背上的箱子摞得比人还高，它看起来不太高兴。</li>
+      <li>{0} 往驮兽背上又加了一箱，驮兽看了他一眼。</li>
+    </workAmbientLinesPacked>
+
+    <targetSitePartTags>
+      <li>ItemStash</li>
+    </targetSitePartTags>
+
+    <commandLabel>委派：搜刮 {0}</commandLabel>
+    <commandDesc>派远行队在这个物资藏匿点上装车，不需要进入地图。装不下的部分会留在原地。</commandDesc>
+    <planningLabel>前往委派搜刮</planningLabel>
+    <planningReportString>正在前往 {0} 执行委派搜刮</planningReportString>
+
+    <minPawns>1</minPawns>
+    <maxPawns>12</maxPawns>
+
+    <modes>
+      <li>RimDelegation_Mode_Relaxed</li>
+      <li>RimDelegation_Mode_Normal</li>
+      <li>RimDelegation_Mode_Overtime</li>
+      <li>RimDelegation_Mode_AroundTheClock</li>
+    </modes>
+    <defaultMode>RimDelegation_Mode_Normal</defaultMode>
+
+    <handleTargetTimeout>Pause</handleTargetTimeout>
+    <destroyTargetOnComplete>true</destroyTargetOnComplete>
+    <abortIfCaravanLeavesTile>true</abortIfCaravanLeavesTile>
+
+    <!-- 装过车就封禁进入（S14 用户口径：事件点被委派动过之后只能走委派路线）。
+         为什么这里也需要：取空时靠 destroyTargetOnComplete 销毁地点；但"车队先装满"收工时
+         地点是**保留**的，原版那条"进图把剩下的搬走"就成了绕过委派的第二条路。
+         动了存量（deposit.unitsMined > 0，即真的装过车）才封；点开就取消的不封。
+         封禁只挡原版「接近XX」，我们自己的委派菜单不受影响 ⇒ 剩下的可以再派一次委派去取。 -->
+    <blockMapEntryAfterWorked>true</blockMapEntryAfterWorked>
+    <blockMapEntryDays>9999</blockMapEntryDays>
+
+    <defaultEndCondition>UntilDepleted</defaultEndCondition>
+    <maxDaysLimit>30</maxDaysLimit>
+
+    <!-- 固定流程（§19.27）：前置「侦察1h→移动2h→破门1h」走完才开装车；
+         任何收工条件成立后再走收尾「撤离2h」才真正收工。合计 6 小时，与速率无关。 -->
+    <flowPhases>
+      <li>RimDelegation_Phase_StashRecon</li>
+      <li>RimDelegation_Phase_StashMove</li>
+      <li>RimDelegation_Phase_StashBreach</li>
+      <li>RimDelegation_Phase_StashExtract</li>
+    </flowPhases>
+
+    <!-- S22：主作业（装车）时小队已经在里面了 -->
+    <workSquadPosition>藏匿点内部</workSquadPosition>
+
+    <!-- S22：**破门之前不给看清单**（用户口径：「这部分需要完成破门才给玩家看预期获得」）。
+         生效范围：开工前的「预期获得」（草稿 / 旧对话框）+ 作业期的「现场物资」——
+         两者都走各 worker 的 PreviewItems / ProgressItems，判据是 DelegationFlow.PhaseDone。 -->
+    <hideItemsUntilPhase>RimDelegation_Phase_StashBreach</hideItemsUntilPhase>
+
+    <emergencyOvertimeHoursPerUse>4</emergencyOvertimeHoursPerUse>
+    <emergencyOvertimeMoodThought>RimDelegation_Thought_EmergencyOvertime</emergencyOvertimeMoodThought>
+
+    <!-- 刻意不设 dailyMoodThought：与矿点一致，心情全部由模式承担。 -->
+    <completeMoodThought>RimDelegation_Thought_DelegationCompleted</completeMoodThought>
+    <abortMoodThought>RimDelegation_Thought_DelegationAborted</abortMoodThought>
+
+    <startLetterLabel>委派开始：搜刮</startLetterLabel>
+    <startLetterText>{0} 的委派搜刮已开始。\n\n模式：{1}\n人员：{2} 人</startLetterText>
+    <completeLetterLabel>委派收工：搜刮</completeLetterLabel>
+    <completeLetterText>{0} 的委派搜刮已收工：{1}\n\n{2}\n\n{3}</completeLetterText>
+    <abortLetterLabel>委派中断</abortLetterLabel>
+    <abortLetterText>{0} 的委派搜刮已中断：{1}\n\n{2}</abortLetterText>
+  </RimDelegation.DelegationDef>
+
+  <!-- ============ 作战姿态（与「委派模式」正交的一条轴）============
+
+       模式回答"干多久"（工时窗口 × 速率），姿态回答"怎么进去"。
+       两者可以任意组合，所以不能塞进同一个 Def 表里。
+       ============================================================ -->
+
+  <RimDelegation.DelegationApproachDef>
+    <defName>RimDelegation_Approach_Assault</defName>
+    <label>强攻</label>
+    <description>直接按无地图战斗结算：跑与「威胁评估」同一套 CombatScene，赢了才能接人。伤亡是真实的。</description>
+    <stealth>false</stealth>
+  </RimDelegation.DelegationApproachDef>
+
+  <RimDelegation.DelegationApproachDef>
+    <defName>RimDelegation_Approach_Stealth</defName>
+    <label>潜入</label>
+    <description>摸进去而不惊动守军。暴露概率 = 基础 0.15 + 每个守卫 0.05 - 专业度×0.025 - 每多一人 0.08。被发现则转入强攻，且守军先手一轮。</description>
+    <stealth>true</stealth>
+    <!-- 原版没有「潜行」技能，所以专业度取「射击 / 格斗 / 驯兽」里最高的那项
+         （驯兽对应"把动物安顿住"这类野外本事）。 -->
+    <skillDefs>
+      <li>Shooting</li>
+      <li>Melee</li>
+      <li>Animals</li>
+    </skillDefs>
+    <baseExposure>0.15</baseExposure>
+    <exposurePerGuard>0.05</exposurePerGuard>
+    <exposureReductionPerExtraPawn>0.08</exposureReductionPerExtraPawn>
+    <exposureReductionPerSkillLevel>0.025</exposureReductionPerSkillLevel>
+    <minExposure>0.05</minExposure>
+    <maxExposure>0.95</maxExposure>
+    <!-- 被发现 ⇒ 守军先手一轮。这个折扣同时作用在结算与「威胁评估」上，保证预告不撒谎。 -->
+    <guardsGetFirstStrike>true</guardsGetFirstStrike>
+    <firstStrikeFactor>1</firstStrikeFactor>
+  </RimDelegation.DelegationApproachDef>
+
+  <!-- ============ 第三条委派：营救囚犯 ============
+
+       为什么这条最值得先做（全部实机核实）：
+         · 守卫 **100% 是炮塔**：`PrisonerRescueQuestThreat` 标签池只有 `Turrets`，
+           且 `OpportunitySite_PrisonerWillingToJoin` 的 `siteThreatChance = 1`。
+         · 炮塔的编制是确定性的：`SitePartWorker_Turrets.GenerateDefaultParams` 在任务生成时就算好
+           `turretsCount = Clamp(round(威胁点数 / 45), 2, 11)` 存进 SitePartParams。
+         · 牢房在进图时是**未探明**的（GenStep 末尾 map.fogGrid.Refog）⇒ 原版这条本来就是潜入戏码，
+           所以给它两种姿态。
+         · 囚犯带派系与 GuestStatus.Prisoner，入伙走 RecruitUtility.Recruit（原版正统入口，地图无关）。
+       ============================================================ -->
+
+  <RimDelegation.DelegationDef>
+    <defName>RimDelegation_RescuePrisoner</defName>
+    <label>营救</label>
+    <description>把囚犯营救委派给远行队：他们在原地破开牢房、处理守卫，把人抬上远行队并让他入伙。守卫是固定炮塔。</description>
+    <workerClass>RimDelegation.DelegationWorker_RescuePawn</workerClass>
+
+    <targetSitePartTags>
+      <li>PrisonerWillingToJoin</li>
+    </targetSitePartTags>
+
+    <!-- 主作业段（= 潜入/强攻/抬人）的旁白（§19.29）。营救是人盯人的活 ⇒ 说话人随机挑一个参与者。 -->
+    <workSpeakerMode>RandomPawn</workSpeakerMode>
+    <workAmbientLines>
+      <li>{0} 压低声音示意全队停下：前面就是守卫的视线边缘。</li>
+      <li>炮塔转过去的那一刻，全队贴着墙根挪了三米。</li>
+      <li>{0} 数着炮塔的扫描周期，数到第三遍才敢动。</li>
+      <li>牢房的门比想象的薄 —— 但声音是个问题。</li>
+      <li>{0} 把人从地上扶起来："别说话，走就行。"</li>
+      <li>有人在数守卫，有人在数心跳。</li>
+      <li>{0} 回头确认了一遍人数，然后继续走。</li>
+      <li>队伍停了一拍：谁也不想在脚步声上出岔子。</li>
+    </workAmbientLines>
+    <restAmbientLines>
+      <li>轮着守夜，剩下的人裹着毯子挤在墙根睡着了。</li>
+      <li>有人在低声商量明天怎么走，声音压得比白天还轻。</li>
+      <li>{0} 靠着墙睡了，手里还攥着撬棍。</li>
+      <li>有人问了一句"明天还从原路撤吗"，没人回答 —— 都睡了。</li>
+      <li>睡前的低声交谈慢慢变成了呼吸声。</li>
+    </restAmbientLines>
+    <!-- 囚犯营救的守卫 **100% 是炮塔**（`siteThreatChance = 1`）⇒ 默认池本来就是"有守军"语境，
+         不需要 hostile 池；这里只补"一个人去"的版本。 -->
+    <workAmbientLinesSolo>
+      <li>{0} 一个人贴着墙根走，数着炮塔的扫描周期。</li>
+      <li>没人望风，{0} 只好自己来回看两边。</li>
+      <li>{0} 一个人撬开牢门，动作比平时慢了一倍。</li>
+      <li>只有一个人，所以每一步都得自己确认。</li>
+    </workAmbientLinesSolo>
+
+    <commandLabel>委派：营救 {0}</commandLabel>
+    <commandDesc>派远行队救出这名囚犯并带回殖民地，不需要进入地图。</commandDesc>
+    <planningLabel>前往委派营救</planningLabel>
+    <planningReportString>正在前往 {0} 执行委派营救</planningReportString>
+
+    <minPawns>1</minPawns>
+    <maxPawns>8</maxPawns>
+
+    <approaches>
+      <li>RimDelegation_Approach_Assault</li>
+      <li>RimDelegation_Approach_Stealth</li>
+    </approaches>
+    <defaultApproach>RimDelegation_Approach_Stealth</defaultApproach>
+
+    <modes>
+      <li>RimDelegation_Mode_Relaxed</li>
+      <li>RimDelegation_Mode_Normal</li>
+      <li>RimDelegation_Mode_Overtime</li>
+      <li>RimDelegation_Mode_AroundTheClock</li>
+    </modes>
+    <defaultMode>RimDelegation_Mode_Normal</defaultMode>
+
+    <handleTargetTimeout>Pause</handleTargetTimeout>
+    <destroyTargetOnComplete>true</destroyTargetOnComplete>
+    <abortIfCaravanLeavesTile>true</abortIfCaravanLeavesTile>
+    <defaultEndCondition>UntilDepleted</defaultEndCondition>
+    <maxDaysLimit>30</maxDaysLimit>
+
+    <!-- 救到人（deposit.unitsMined += 1）之后就封禁进入，口径与矿点/物资点一致。
+         实际上这条多半用不上：真救出人时 TargetDepleted 成立 ⇒ 地点直接销毁。
+         刻意**不要**把"动过"放宽成"打过一轮"——营救失败时人还押在里面，
+         玩家自己进图强攻是合法退路，不该被委派的一次失败堵死。 -->
+    <blockMapEntryAfterWorked>true</blockMapEntryAfterWorked>
+    <blockMapEntryDays>9999</blockMapEntryDays>
+
+    <emergencyOvertimeHoursPerUse>4</emergencyOvertimeHoursPerUse>
+    <emergencyOvertimeMoodThought>RimDelegation_Thought_EmergencyOvertime</emergencyOvertimeMoodThought>
+
+    <!-- 阵亡是真的（威胁评估已经承诺了"阵亡 P50/P90"，软化会让预告变成假话）。
+         想做休闲模式就改成 false：阵亡降级为倒地。 -->
+    <casualtiesArePermanent>true</casualtiesArePermanent>
+
+    <completeMoodThought>RimDelegation_Thought_DelegationCompleted</completeMoodThought>
+    <abortMoodThought>RimDelegation_Thought_DelegationAborted</abortMoodThought>
+
+    <startLetterLabel>委派开始：营救</startLetterLabel>
+    <startLetterText>{0} 的委派营救已开始。\n\n模式：{1}\n人员：{2} 人</startLetterText>
+    <completeLetterLabel>委派收工：营救</completeLetterLabel>
+    <completeLetterText>{0} 的委派营救已收工：{1}\n\n{2}\n\n{3}</completeLetterText>
+    <abortLetterLabel>委派中断</abortLetterLabel>
+    <abortLetterText>{0} 的委派营救已中断：{1}\n\n{2}</abortLetterText>
+  </RimDelegation.DelegationDef>
+
+  <!-- ============ 第四条委派：营救难员 ============
+
+       与囚犯共用一个 worker，差别全在数据上：
+         · 难员**倒地且双腿不能动**（GenerateRefugee 里 DamageUntilDowned +
+           DamageLegsUntilIncapableOfMoving，且 allowBleedingWounds: false ⇒ 不会流血死），
+           所以必须被"抬"——原版允许倒地者进车队（Caravan.AddPawn 只拒绝 Dead）。
+         · 威胁池与物资点相同的 7 选 1，70% 概率有守军 ⇒ 威胁可能只是小股敌人，不值得专门做潜入。
+         · 刻意**不给 approaches**：默认就是一次清场 + 抬人，UI 也少一个没得选的按钮。
+         · 按既定决策：**不加恶化机制**，完全沿用原版（等待期不流血、SitePart 还会把食物顶在 0.8）。
+       ============================================================ -->
+
+  <RimDelegation.DelegationDef>
+    <defName>RimDelegation_RescueRefugee</defName>
+    <label>救援</label>
+    <description>把难员救援委派给远行队：他们处理掉守军，把倒地的人抬上远行队并带回殖民地。伤员不会自己走，所以必须抬。</description>
+    <workerClass>RimDelegation.DelegationWorker_RescuePawn</workerClass>
+
+    <targetSitePartTags>
+      <li>DownedRefugee</li>
+    </targetSitePartTags>
+
+    <!-- 主作业段（= 清场 + 抬人）的旁白（§19.29）。难民的威胁池是 7 选 1 ⇒ **可能没有守卫**，
+         所以"守卫/岗哨"那几句挪进 `workAmbientLinesHostile`（判据 `HasThreat`），
+         默认池只留不管有没有敌人都成立的话。 -->
+    <workSpeakerMode>RandomPawn</workSpeakerMode>
+    <workAmbientLines>
+      <li>伤员一直没出声，{0} 每隔一会儿就确认一下呼吸。</li>
+      <li>简易担架是用门板和腰带现做的，能撑到车队就行。</li>
+      <li>{0} 说"抬稳点"，然后自己先踉跄了一下。</li>
+      <li>{0} 把水壶递过去，对方摇了摇头。</li>
+      <li>队伍走得比来时慢，但没人催。</li>
+      <li>一路上没遇到什么麻烦 —— 但没人把这句话说出口。</li>
+    </workAmbientLines>
+    <restAmbientLines>
+      <li>伤员先睡了，{0} 又去确认了一次呼吸才躺下。</li>
+      <li>火堆压得很小，怕远处看见光。</li>
+      <li>有人守着夜，也有人在半梦半醒之间数着还剩多少路。</li>
+      <li>睡前那句"明天就能到家了"说得没什么底气。</li>
+      <li>睡前的低声交谈慢慢变成了呼吸声。</li>
+    </restAmbientLines>
+    <workAmbientLinesHostile>
+      <li>守卫比预想的少 —— 但这不表示可以松手。</li>
+      <li>{0} 清掉最后一个岗哨，朝后面打了个手势。</li>
+      <li>有人在数伤员，有人在数守卫 —— 两边都没数错。</li>
+      <li>{0} 确认最后一个威胁已经倒下，才转身去抬人。</li>
+    </workAmbientLinesHostile>
+    <workAmbientLinesSolo>
+      <li>{0} 一个人把伤员半背半拖地弄上车。</li>
+      <li>没人帮着抬，{0} 只好分两次把人挪过去。</li>
+      <li>{0} 一个人清完场，喘了两口气才去碰担架。</li>
+      <li>{0} 把水壶塞给对方，自己没喝。</li>
+    </workAmbientLinesSolo>
+
+    <commandLabel>委派：救援 {0}</commandLabel>
+    <commandDesc>派远行队救出这名无行动能力的难民，不需要进入地图。</commandDesc>
+    <planningLabel>前往委派救援</planningLabel>
+    <planningReportString>正在前往 {0} 执行委派救援</planningReportString>
+
+    <minPawns>1</minPawns>
+    <maxPawns>8</maxPawns>
+
+    <modes>
+      <li>RimDelegation_Mode_Relaxed</li>
+      <li>RimDelegation_Mode_Normal</li>
+      <li>RimDelegation_Mode_Overtime</li>
+      <li>RimDelegation_Mode_AroundTheClock</li>
+    </modes>
+    <defaultMode>RimDelegation_Mode_Normal</defaultMode>
+
+    <handleTargetTimeout>Pause</handleTargetTimeout>
+    <destroyTargetOnComplete>true</destroyTargetOnComplete>
+    <abortIfCaravanLeavesTile>true</abortIfCaravanLeavesTile>
+    <defaultEndCondition>UntilDepleted</defaultEndCondition>
+    <maxDaysLimit>30</maxDaysLimit>
+
+    <!-- 与囚犯那条同一口径：救到人才算动过存量，才封禁进入（见上面那条的说明）。 -->
+    <blockMapEntryAfterWorked>true</blockMapEntryAfterWorked>
+    <blockMapEntryDays>9999</blockMapEntryDays>
+
+    <emergencyOvertimeHoursPerUse>4</emergencyOvertimeHoursPerUse>
+    <emergencyOvertimeMoodThought>RimDelegation_Thought_EmergencyOvertime</emergencyOvertimeMoodThought>
+
+    <casualtiesArePermanent>true</casualtiesArePermanent>
+
+    <completeMoodThought>RimDelegation_Thought_DelegationCompleted</completeMoodThought>
+    <abortMoodThought>RimDelegation_Thought_DelegationAborted</abortMoodThought>
+
+    <startLetterLabel>委派开始：救援</startLetterLabel>
+    <startLetterText>{0} 的委派救援已开始。\n\n模式：{1}\n人员：{2} 人</startLetterText>
+    <completeLetterLabel>委派收工：救援</completeLetterLabel>
+    <completeLetterText>{0} 的委派救援已收工：{1}\n\n{2}\n\n{3}</completeLetterText>
+    <abortLetterLabel>委派中断</abortLetterLabel>
+    <abortLetterText>{0} 的委派救援已中断：{1}\n\n{2}</abortLetterText>
+  </RimDelegation.DelegationDef>
+
+  <!-- ============ 第五条委派：工作站点清剿（Ideology WorkSite_*）============
+
+       2026-09-30 用户拍板落地（六问答复：工作站 / 乙档清场+搬运 / 按 tag 覆盖 /
+       速率新开 0.5 / 掉派系好感 / 追加进设计文档）。
+
+       这条为什么能"少代码"（全部反编译核实，见 DelegationWorker_WorkSite 类注释）：
+         · 营地的仓储在【建点那一刻】就由 SitePartWorker_WorkSite.Init 掷好、
+           用 ThingMaker 造出实物塞进 SitePart.things，而 SitePart.ExposeData 用
+            Scribe_Deep 把它存档 ⇒ 不解图就能读到、且抵达前就是精确值。
+         · 进图时 GenStep_WorkSiteStash.ScatterAt 又**优先拿同一份** sitePart.things
+           当 stockpileConcreteContents ⇒ "委派搬走多少、进图就少多少"，与搜刮点同构。
+         · 所以主作业直接复用 DelegationWorker_TakeItemStash（质量预算 + 边搬边装车
+           + 满载收工），子类只改三件事：速率常量 0.5、不兜底现掷、文案口径。
+
+       四个工作站**共用同一条 tag `WorkSite`** ⇒ 这一条 Def 同时覆盖伐木/狩猎/农耕/采掘。
+       （想收窄成"只认这四个 def"就把 targetSitePartTags 换成 targetSitePartTags 之外的
+        targetSitePartDefs 精确列四条；现在是宽口径，第三方模组若也复用该 tag 会被一并接管。）
+
+       ⚠️ 封禁进入是**必须**的，不是可选项：主作业取空之后 sitePart.things 就空了，
+       而此时进图 GenStep_WorkSiteStash 会走 else 分支按 site.workSitePoints **另掷一份**。
+       ============================================================ -->
+
+  <RimDelegation.DelegationDef>
+    <defName>RimDelegation_ClearWorkSite</defName>
+    <label>清剿</label>
+    <description>把工作站委派给远行队：队伍先清除营地守军，再把营地的仓储搬空装车，按日消耗补给；不需要进入地图，装不下的部分留在原地。</description>
+    <workerClass>RimDelegation.DelegationWorker_WorkSite</workerClass>
+
+    <targetSitePartTags>
+      <li>WorkSite</li>
+    </targetSitePartTags>
+
+    <commandLabel>委派：清剿 {0}</commandLabel>
+    <commandDesc>派远行队清剿这个工作站并搬走营地的仓储，不需要进入地图。装不下的部分会留在原地。</commandDesc>
+    <planningLabel>前往委派清剿</planningLabel>
+    <planningReportString>正在前往 {0} 执行委派清剿</planningReportString>
+
+    <minPawns>1</minPawns>
+    <maxPawns>12</maxPawns>
+
+    <!-- 主作业段（= 搬空营地仓储）的旁白（§19.29）：主作业不是 flowPhases（它按速率推进、
+         没有固定时长），所以它的旁白只能挂在委派 Def 上。搬东西是集体动作 ⇒ 说话人用"全队"。 -->
+    <workSpeakerMode>All</workSpeakerMode>
+    <workAmbientLines>
+      <li>堆场看着不大，搬起来才知道码得有多实。</li>
+      <li>已经把靠外的一排清干净了，里面那排还在。</li>
+      <li>{0} 提议按堆搬，别东抓一把西抓一把，全票通过。</li>
+      <li>木料上的记号看不懂，大概是他们自己的账。</li>
+      <li>来回的趟数自己都记不清了，只记得每一趟都更沉一点。</li>
+      <li>有人发现底下压着的比上面成色好，于是从底下开始搬。</li>
+    </workAmbientLines>
+    <workAmbientLinesHostile>
+      <li>没人再往营地里走，东西只从堆场这边往外搬。</li>
+      <li>干活的时候留了两个人看着那几间屋子。</li>
+      <li>{0} 把缴来的家伙靠在木料堆上，腾出手继续搬。</li>
+      <li>搬得快了些，谁都明白在这儿待久了不好。</li>
+    </workAmbientLinesHostile>
+    <workAmbientLinesSolo>
+      <li>{0} 一个人来回搬，来回的次数自己都记不清了。</li>
+      <li>没人搭手，{0} 把成捆的料一根根挪到车边。</li>
+      <li>{0} 歇了一会儿，然后又抱起下一捆。</li>
+      <li>一个人搬这些确实慢，但没人催。</li>
+    </workAmbientLinesSolo>
+    <restAmbientLines>
+      <li>有人已经睡着了，鼾声比白天的搬运声还规律。</li>
+      <li>帐篷里还在聊今天搬了多少捆，聊着聊着就变成了嘟囔。</li>
+      <li>{0} 把外套垫在头下，说这样比睡袋舒服。</li>
+      <li>有人问了一句明天几点开工，没人回答，都睡了。</li>
+      <li>睡前的闲聊慢慢变成了呼吸声。</li>
+    </restAmbientLines>
+
+    <!-- 固定流程（见文件上方那七个段）：侦察/观察/评估/待命/交战/搜集/扎营走完才开搬，
+         收工条件成立后再走收尾"撤离"。 -->
+    <flowPhases>
+      <li>RimDelegation_Phase_WorkScout</li>
+      <li>RimDelegation_Phase_WorkObserve</li>
+      <li>RimDelegation_Phase_WorkAssess</li>
+      <li>RimDelegation_Phase_WorkEngage</li>
+      <li>RimDelegation_Phase_WorkLoot</li>
+      <li>RimDelegation_Phase_WorkCamp</li>
+      <li>RimDelegation_Phase_WorkExtract</li>
+    </flowPhases>
+
+    <workSquadPosition>营地</workSquadPosition>
+
+    <modes>
+      <li>RimDelegation_Mode_Relaxed</li>
+      <li>RimDelegation_Mode_Normal</li>
+      <li>RimDelegation_Mode_Overtime</li>
+      <li>RimDelegation_Mode_AroundTheClock</li>
+    </modes>
+    <defaultMode>RimDelegation_Mode_Normal</defaultMode>
+
+    <handleTargetTimeout>Pause</handleTargetTimeout>
+    <destroyTargetOnComplete>true</destroyTargetOnComplete>
+    <abortIfCaravanLeavesTile>true</abortIfCaravanLeavesTile>
+
+    <!-- 取空 ⇒ 销毁营地；先装满 ⇒ 保留营地，但两种情况都要封禁进入（理由见本节抬头）。
+         动了存量（真搬过）才封，点开就取消的不封。 -->
+    <blockMapEntryAfterWorked>true</blockMapEntryAfterWorked>
+    <blockMapEntryDays>9999</blockMapEntryDays>
+
+    <defaultEndCondition>UntilDepleted</defaultEndCondition>
+    <maxDaysLimit>30</maxDaysLimit>
+
+    <!-- skillDef 刻意留空：搬运在原版不给经验（与搜刮那条同一口径）。 -->
+
+    <emergencyOvertimeHoursPerUse>4</emergencyOvertimeHoursPerUse>
+    <emergencyOvertimeMoodThought>RimDelegation_Thought_EmergencyOvertime</emergencyOvertimeMoodThought>
+
+    <completeMoodThought>RimDelegation_Thought_DelegationCompleted</completeMoodThought>
+    <abortMoodThought>RimDelegation_Thought_DelegationAborted</abortMoodThought>
+
+    <startLetterLabel>委派开始：清剿</startLetterLabel>
+    <startLetterText>{0} 的委派清剿已开始。\n\n模式：{1}\n人员：{2} 人</startLetterText>
+    <completeLetterLabel>委派收工：清剿</completeLetterLabel>
+    <completeLetterText>{0} 的委派清剿已收工：{1}\n\n{2}\n\n{3}</completeLetterText>
+    <abortLetterLabel>委派中断</abortLetterLabel>
+    <abortLetterText>{0} 的委派清剿已中断：{1}\n\n{2}</abortLetterText>
+  </RimDelegation.DelegationDef>
+
+</Defs>
