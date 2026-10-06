@@ -714,6 +714,10 @@ namespace RimDelegation
                     {
                         cq.SetQuality((QualityCategory)item.quality, null);
                     }
+                    // RIM-32：这两步必须在取 `thing.MarketValue` **之前**做 ——
+                    // 特性与编码都影响数值与市值，先取价就是拿错数（RIM-31 的排序也跟着错）。
+                    ApplyWeaponTraits(thing, item.weaponTraits);
+                    ApplyBiocode(thing, item.codedPawnLabel);
                 }
                 catch (Exception ex)
                 {
@@ -771,6 +775,20 @@ namespace RimDelegation
                 {
                     cand.thing.stackCount = take;
                     caravan.AddPawnOrItem(cand.thing, false);
+                    // RIM-32(2A)：原版交货失败走的是 `Log.Error("… item was lost") + thing.Destroy()`
+                    // ——**不抛异常**，所以只靠 catch 抓不到：账上加了一件，实物已经没了。
+                    // 判据只能是"实物还在不在"；不在了就回滚账目，并把它记进"没带走"那一栏。
+                    if (cand.thing.Destroyed)
+                    {
+                        Log.WarningOnce("[RimDelegation] 缴获交货失败（原版已销毁实物，账目回滚）："
+                            + item.def.defName, 0x5E0CA9);
+                        left += item.count;
+                        if (leftInto != null)
+                        {
+                            leftInto.Add(CloneRow(item, cand.unitValue));
+                        }
+                        continue;
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -854,7 +872,96 @@ namespace RimDelegation
                 quality = src.quality,
                 enemyIndex = src.enemyIndex,
                 unitMarketValue = unitValue,
+                // RIM-32：编码与特性也要跟着账目走（UI/后续还原都要用）
+                codedPawnLabel = src.codedPawnLabel,
+                weaponTraits = src.weaponTraits,
             };
+        }
+
+        /// <summary>
+        /// RIM-32(3A)：把武器特性还原到刚造出来的实物上。
+        ///
+        /// ⚠️ 必须**先清空**再逐条加：反编译确认（rw16b / MVID 61e41735…）
+        /// `ThingMaker.MakeThing` → `CompUniqueWeapon.PostPostMake` → `InitializeTraits()` 会
+        /// **自己随机掷一套特性**（还会强制成 Super 品质、随机配色与随机生成的名字）。
+        /// 不清掉的话，缴获回来的不是同一件东西，而是"另一件随机独特武器"。
+        /// `TraitsListForReading` 直接返回内部 `traits` 列表（反编译确认 `=> traits`）⇒ 可以 `.Clear()`；
+        /// `AddTrait` 是公开 API。
+        /// </summary>
+        private static void ApplyWeaponTraits(Thing thing, List<string> traitDefNames)
+        {
+            if (thing == null)
+            {
+                return;
+            }
+            CompUniqueWeapon uw = (thing as ThingWithComps)?.TryGetComp<CompUniqueWeapon>();
+            if (uw == null)
+            {
+                return;
+            }
+            try
+            {
+                uw.TraitsListForReading.Clear();
+                if (traitDefNames.NullOrEmpty())
+                {
+                    return;
+                }
+                for (int i = 0; i < traitDefNames.Count; i++)
+                {
+                    WeaponTraitDef def = DefDatabase<WeaponTraitDef>.GetNamedSilentFail(traitDefNames[i]);
+                    if (def != null)
+                    {
+                        uw.AddTrait(def);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.WarningOnce("[RimDelegation] 武器特性还原失败：" + ex.Message, 0x5E0CA8);
+            }
+        }
+
+        /// <summary>
+        /// RIM-32(1A)：把「生物编码」还原到刚造出来的实物上 —— 原主锁死，谁都装备不了。
+        ///
+        /// 为什么用反射：`CompBiocodable` 的 `biocoded` / `codedPawnLabel` / `codedPawn` 三个字段
+        /// 全是 **protected**，公开 API 只有 `CodeFor(Pawn)`（需要一个**活着**的 pawn，而原主早在
+        /// 抄完数值时就 `Destroy` 了）与 `UnCode()`。
+        /// 反编译确认语义：`Biocoded => biocoded`、`IsBiocodedFor(t, p) => CodedPawn == p`
+        /// ⇒ `biocoded = true` ＋ `codedPawn = null` 的形态**谁都装备不了**，正是 1A 要的"原主锁死"；
+        /// 而 `PostExposeData` 用的是 `Scribe_References.Look(ref codedPawn, "codedPawn", saveDestroyedThings: true)`，
+        /// 所以留 null 引用**不会有存档问题**（比存一个已销毁 pawn 的引用干净得多）。
+        /// </summary>
+        private static void ApplyBiocode(Thing thing, string codedPawnLabel)
+        {
+            if (thing == null || codedPawnLabel.NullOrEmpty())
+            {
+                return;
+            }
+            CompBiocodable bc = (thing as ThingWithComps)?.TryGetComp<CompBiocodable>();
+            if (bc == null)
+            {
+                return;
+            }
+            try
+            {
+                Type t = typeof(CompBiocodable);
+                const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public;
+                FieldInfo fBiocoded = t.GetField("biocoded", flags);
+                FieldInfo fLabel = t.GetField("codedPawnLabel", flags);
+                FieldInfo fPawn = t.GetField("codedPawn", flags);
+                if (fBiocoded == null || fLabel == null)
+                {
+                    return;   // 原版改了字段名就静默退回（不编造一个假的编码状态）
+                }
+                fPawn?.SetValue(bc, null);
+                fLabel.SetValue(bc, codedPawnLabel);
+                fBiocoded.SetValue(bc, true);
+            }
+            catch (Exception ex)
+            {
+                Log.WarningOnce("[RimDelegation] 生物编码还原失败：" + ex.Message, 0x5E0CA7);
+            }
         }
 
         // ================================================================ S31：打扫战场（尸骸 / 俘虏）

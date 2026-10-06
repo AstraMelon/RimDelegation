@@ -1027,6 +1027,16 @@ namespace RimDelegation
                 // 与原版 Caravan.AddPawnOrItem 的内部行为一致：
                 // 物品走 CaravanInventoryUtility.GiveThing（含负重与人份分配），Pawn 走 AddPawn。
                 caravan.AddPawnOrItem(t, false);
+                // RIM-32(2A)：原版 `GiveThing` 在**没有任何人能接收**时走的是
+                // `Log.Error("… item was lost") + thing.Destroy()` —— **不抛异常**，
+                // 所以只靠 catch 抓不到：这里会"永远返回成功"，而东西已经从藏匿点消失了、进度照加。
+                // 判据只能是"实物还在不在"；不在了就必须回滚（调用方会把它放回现场）。
+                if (t.Destroyed)
+                {
+                    Log.ErrorOnce("[RimDelegation] 物资交货失败（实物被原版销毁，已放回事件点）："
+                        + (t.def?.defName ?? "?"), 0x5E0C8);
+                    return false;
+                }
                 return true;
             }
             catch (Exception ex)

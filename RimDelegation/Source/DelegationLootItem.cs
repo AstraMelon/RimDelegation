@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using RimWorld;
 using Verse;
 
@@ -39,6 +40,25 @@ namespace RimDelegation
         /// </summary>
         public int enemyIndex;
 
+        /// <summary>
+        /// RIM-32(1A)：**生物编码的原主名**（null / 空 = 这件东西没被编码）。
+        ///
+        /// 只存名字**不存 pawn 引用**：原主是临时生成的守军，抄完数值就 `Destroy` 了，
+        /// 存引用等于存一个死对象（`CompBiocodable` 自己也只是为了显示"Coded for X"）。
+        /// 还原时把 comp 置成"已编码 + 原主名 + 无 pawn 引用" ⇒ 谁都装备不了（1A 要的"原主锁死"）。
+        /// </summary>
+        public string codedPawnLabel;
+
+        /// <summary>
+        /// RIM-32(3A)：**武器特性的 defName 列表**（空 / null = 没有特性）。
+        ///
+        /// 为什么存 defName 而不是 `WeaponTraitDef`：这是记账（要进存档的配方），
+        /// 存 Def 实例会让 Scribe 变成"引用 Def"（本项目惯例是值化）。
+        /// 还原时要**先清空**再逐条加：`ThingMaker.MakeThing` 对独特武器会自己随机生成一套
+        /// （反编译 `CompUniqueWeapon.PostPostMake → InitializeTraits`），不清就会多出它本来没有的特性。
+        /// </summary>
+        public List<string> weaponTraits;
+
         /// <summary>单件质量（kg）。只用于"装不装得下"的估算。</summary>
         public float UnitMass => def == null ? 0f : def.GetStatValueAbstract(StatDefOf.Mass, stuff);
 
@@ -66,6 +86,8 @@ namespace RimDelegation
             Scribe_Values.Look(ref quality, "quality", -1);
             Scribe_Values.Look(ref enemyIndex, "enemyIndex", 0);
             Scribe_Values.Look(ref unitMarketValue, "unitMarketValue", 0f);
+            Scribe_Values.Look(ref codedPawnLabel, "codedPawnLabel");
+            Scribe_Collections.Look(ref weaponTraits, "weaponTraits", LookMode.Value);
         }
     }
 }

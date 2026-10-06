@@ -638,8 +638,17 @@ namespace RimDelegation.Combat
                 int quality = cq != null ? (int)cq.Quality : -1;
                 int count = Mathf.Max(1, t.stackCount);
 
+                // RIM-32：**生物编码的原主名**与**武器特性**也要抄下来 —— 实物化时这两样都会丢，
+                // 而 `ThingMaker.MakeThing` 对独特武器还会自己随机掷一套特性（反编译
+                // `CompUniqueWeapon.PostPostMake → InitializeTraits`）⇒ 不抄就等于"缴获回来的
+                // 不是同一件东西，而是另一件随机独特武器"。还原见
+                // `DelegationUtility.ApplyBiocode` / `ApplyWeaponTraits`。
+                string codedLabel = CaptureCodedLabel(t);
+                List<string> traits = CaptureWeaponTraits(t);
+
                 // 可堆叠的合并成一条，不可堆叠的各算一条（一条 = 一件实物）
-                if (t.def.stackLimit > 1)
+                // （带编码 / 带特性的东西一律不参与合并 —— 它们本来就不可堆叠）
+                if (t.def.stackLimit > 1 && codedLabel.NullOrEmpty() && traits.NullOrEmpty())
                 {
                     DelegationLootItem same = null;
                     for (int j = 0; j < r.EnemyLoot.Count; j++)
@@ -665,6 +674,8 @@ namespace RimDelegation.Combat
                     count = t.def.stackLimit > 1 ? count : 1,
                     quality = quality,
                     enemyIndex = enemyIndex,
+                    codedPawnLabel = codedLabel,
+                    weaponTraits = traits,
                 });
                 if (t.def.stackLimit <= 1 && count > 1)
                 {
@@ -678,9 +689,52 @@ namespace RimDelegation.Combat
                             count = 1,
                             quality = quality,
                             enemyIndex = enemyIndex,
+                            codedPawnLabel = codedLabel,
+                            weaponTraits = traits,
                         });
                     }
                 }
+            }
+        }
+
+        /// <summary>RIM-32：抄下这件东西的"生物编码原主名"（没被编码 = null）。</summary>
+        private static string CaptureCodedLabel(Thing t)
+        {
+            try
+            {
+                CompBiocodable bc = (t as ThingWithComps)?.TryGetComp<CompBiocodable>();
+                return bc != null && bc.Biocoded ? bc.CodedPawnLabel : null;
+            }
+            catch (Exception)
+            {
+                return null;   // 抄不到就少一份忠实度，绝不能因此打断一次委派结算
+            }
+        }
+
+        /// <summary>RIM-32：抄下这件东西的武器特性 defName 表（没有 = null）。</summary>
+        private static List<string> CaptureWeaponTraits(Thing t)
+        {
+            try
+            {
+                CompUniqueWeapon uw = (t as ThingWithComps)?.TryGetComp<CompUniqueWeapon>();
+                if (uw == null || uw.TraitsListForReading.NullOrEmpty())
+                {
+                    return null;
+                }
+                List<string> list = new List<string>();
+                for (int i = 0; i < uw.TraitsListForReading.Count; i++)
+                {
+                    WeaponTraitDef d = uw.TraitsListForReading[i];
+                    if (d != null)
+                    {
+                        list.Add(d.defName);
+                    }
+                }
+                return list.Count > 0 ? list : null;
+            }
+            catch (Exception)
+            {
+                return null;
             }
         }
 
