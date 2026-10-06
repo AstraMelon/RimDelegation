@@ -469,12 +469,19 @@ namespace RimDelegation
             }
             // S32「带走」档：尸骸同样在这段按载重装车（装不下的当场丢弃）
             int hauled;
+            int discarded;
             float hauledMass;
-            DelegationUtility.TakeCorpses(d.caravan, d.pendingCorpses, d, out hauled, out hauledMass);
+            DelegationUtility.TakeCorpses(d.caravan, d.pendingCorpses, d, out hauled, out discarded, out hauledMass);
             if (hauled > 0)
             {
                 string corpseLine = string.Format("另带回尸骸 ×{0}（合计 {1:0.#} kg，回家可自行屠宰）", hauled, hauledMass);
                 note = note.NullOrEmpty() ? corpseLine : note + "\n" + corpseLine;
+            }
+            // RIM-29(1A)：装不下而被丢掉的尸骸也要说一句（旧写法一声不响）
+            if (discarded > 0)
+            {
+                string dropLine = string.Format("另有 {0} 具尸骸装不下，被丢在战场上了。", discarded);
+                note = note.NullOrEmpty() ? dropLine : note + "\n" + dropLine;
             }
             return note;
         }

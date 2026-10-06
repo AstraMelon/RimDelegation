@@ -549,12 +549,19 @@ namespace RimDelegation
                 d.lootBag.Clear();   // 搬完就清空（与搜集段同一条规矩：别让读档重搬）
                 // S32「带走」档：尸骸也在这里装车（营救没有流程段，所以就地结算）
                 int hauled;
+                int discarded;
                 float hauledMass;
-                DelegationUtility.TakeCorpses(caravan, d.pendingCorpses, d, out hauled, out hauledMass);
+                DelegationUtility.TakeCorpses(caravan, d.pendingCorpses, d, out hauled, out discarded, out hauledMass);
                 if (hauled > 0)
                 {
                     string corpseLine = string.Format("另带回尸骸 ×{0}（合计 {1:0.#} kg，回家可自行屠宰）", hauled, hauledMass);
                     lootNote = lootNote.NullOrEmpty() ? corpseLine : lootNote + "\n" + corpseLine;
+                }
+                // RIM-29(1A)：装不下被丢掉的尸骸也要说一句
+                if (discarded > 0)
+                {
+                    string dropLine = string.Format("另有 {0} 具尸骸装不下，被丢在战场上了。", discarded);
+                    lootNote = lootNote.NullOrEmpty() ? dropLine : lootNote + "\n" + dropLine;
                 }
                 if (!lootNote.NullOrEmpty())
                 {

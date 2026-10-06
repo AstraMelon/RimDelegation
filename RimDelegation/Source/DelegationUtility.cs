@@ -542,10 +542,55 @@ namespace RimDelegation
             }
         }
 
+        // ================================================================ RIM-29：载重闸门（全仓库唯一一份）
+
+        /// <summary>
+        /// RIM-29(4B)：**四条载重路径唯一的闸门** —— 车队现在还能再装多少 kg。
+        ///
+        /// 口径 ＝ `MassCapacity + 可超载额度(设置项，默认 0) − MassUsage`（下限 0）。
+        /// 默认额度下它与改动前的 `max(0, MassCapacity − MassUsage)` **逐字一致** ⇒ 老玩家零感知。
+        ///
+        /// 为什么必须收成一份：此前同一个"装不下"在四条路上四种行为 ——
+        /// 战利品按值钱优先且文案写"留在原地"（假承诺：那些东西**从来没有实体**）、
+        /// 尸骸当场 `Destroy()` 且一句不说、现场物资跳过重货看轻货（那里"留在原地"是真的）、
+        /// 采矿产出**根本不查载重**。调用点：`TakeLoot` / `TakeCorpses` /
+        /// `DelegationWorker_TakeItemStash` 的搬运预算 / `DeliverThingToCaravan`。
+        /// </summary>
+        public static float OverloadBudgetKg(Caravan caravan)
+        {
+            if (caravan == null || caravan.Destroyed)
+            {
+                return 0f;
+            }
+            float quota = Mathf.Max(0f, RimDelegationMod.Settings?.overloadQuotaKg ?? 0f);
+            return Mathf.Max(0f, caravan.MassCapacity + quota - caravan.MassUsage);
+        }
+
+        /// <summary>这个 Def 的单件质量（kg）。取不到时返回 0 ＝ 不参与闸门（与旧行为一致）。</summary>
+        public static float UnitMassOf(ThingDef def, ThingDef stuff = null)
+        {
+            if (def == null)
+            {
+                return 0f;
+            }
+            try
+            {
+                return Mathf.Max(0f, def.GetStatValueAbstract(StatDefOf.Mass, stuff));
+            }
+            catch (Exception)
+            {
+                return 0f;
+            }
+        }
+
         /// <summary>
         /// 把 count 个 thingDef 交付进车队库存。
         /// Caravan.AddPawnOrItem → CaravanInventoryUtility.GiveThing（含负重与人份分配）。
         /// 按 stackLimit 拆堆，避免生成超大堆叠。
+        ///
+        /// RIM-29(6A)：**过同一道载重闸门**（旧写法不查载重 ⇒ 采矿可以无限把车队塞到走不动）。
+        /// 装不下的**留在原地不交付**（由调用方把余数留在缓冲里、下次再试），绝不静默销毁 ——
+        /// 这与另外三条"装不下就丢"不同源，因为矿是**持续产出**：丢一次就是永久损失。
         /// </summary>
         public static int DeliverThingToCaravan(Caravan caravan, ThingDef thingDef, int count)
         {
@@ -556,12 +601,24 @@ namespace RimDelegation
             int stackLimit = Mathf.Max(1, thingDef.stackLimit);
             int remaining = count;
             int delivered = 0;
+            float budget = OverloadBudgetKg(caravan);
+            float unitMass = UnitMassOf(thingDef);
             while (remaining > 0)
             {
                 int chunk = Mathf.Min(remaining, stackLimit);
+                if (unitMass > 0.0001f)
+                {
+                    int byMass = Mathf.FloorToInt((budget + 0.0001f) / unitMass);
+                    if (byMass <= 0)
+                    {
+                        break;   // 装不下的留在原地（余数由调用方保留，不销毁）
+                    }
+                    chunk = Mathf.Min(chunk, byMass);
+                }
                 Thing thing = ThingMaker.MakeThing(thingDef);
                 thing.stackCount = chunk;
                 caravan.AddPawnOrItem(thing, false);
+                budget -= unitMass * chunk;
                 remaining -= chunk;
                 delivered += chunk;
             }
@@ -632,7 +689,7 @@ namespace RimDelegation
             List<DelegationLootItem> sorted = new List<DelegationLootItem>(loot);
             sorted.Sort((a, b) => b.SortValue.CompareTo(a.SortValue));
 
-            float free = Mathf.Max(0f, caravan.MassCapacity - caravan.MassUsage);
+            float free = OverloadBudgetKg(caravan);   // RIM-29(4B)：四条路径唯一的闸门（默认额度 0 = 与改动前一致）
             int taken = 0, left = 0;
             float mass = 0f, value = 0f;
             List<string> shown = new List<string>();
@@ -707,7 +764,7 @@ namespace RimDelegation
 
             if (taken <= 0)
             {
-                return "战场上的东西一件也装不下（车队已满载），只好留在原地。";
+                return "战场上的东西一件也带不走（车队装不下）—— 剩下的被丢在战场上了。";
             }
             StringBuilder sb = new StringBuilder();
             sb.AppendFormat("缴获 {0} 件（合计 {1:0.#} kg · 市价约 {2:0} 银）：{3}",
@@ -718,7 +775,14 @@ namespace RimDelegation
             }
             if (left > 0)
             {
-                sb.AppendFormat("\n还有 {0} 件装不下，留在原地。", left);
+                // RIM-29(2A)：旧文案「留在原地」是**假承诺** —— 缴获只存配方、来源 pawn 早销毁，
+                // 那些东西从来没有实体。改成诚实说法。
+                sb.AppendFormat("\n剩下的 {0} 件被丢在战场上。", left);
+            }
+            // RIM-29(4B)：软闸门真的把车队塞过容量线时必须明说（原版超重是"完全不能移动"，不是减速）
+            if (caravan.MassUsage > caravan.MassCapacity)
+            {
+                sb.Append("\n车队已超重 —— 超重会让远行队无法移动。");
             }
             return sb.ToString();
         }
@@ -971,19 +1035,20 @@ namespace RimDelegation
         /// <summary>
         /// S32：把待搬的尸体装车（"能装多少装多少"）。返回带走的具数/总重；**装不下或没搬的当场销毁**
         /// （丢弃），并且**无论成败都清空队列**（与 `lootBag` 同一条防刷规矩）。
+        ///
+        /// RIM-29(1A)：加 `out int discarded` —— 旧写法丢弃时**一句不说**，玩家只看到"没带回来"。
         /// </summary>
         public static void TakeCorpses(Caravan caravan, List<Corpse> pending, Delegation d,
-            out int hauled, out float mass)
+            out int hauled, out int discarded, out float mass)
         {
             hauled = 0;
+            discarded = 0;
             mass = 0f;
             if (pending.NullOrEmpty())
             {
                 return;
             }
-            float free = caravan != null && !caravan.Destroyed
-                ? Mathf.Max(0f, caravan.MassCapacity - caravan.MassUsage)
-                : 0f;
+            float free = OverloadBudgetKg(caravan);   // RIM-29(4B)：与战利品/物资/采矿同一道闸门
             for (int i = 0; i < pending.Count; i++)
             {
                 Corpse corpse = pending[i];
@@ -1022,6 +1087,7 @@ namespace RimDelegation
                 else if (!corpse.Destroyed)
                 {
                     corpse.Destroy();   // 丢弃（原版 Destroy 会连内部 pawn 一起收尾）
+                    discarded++;
                 }
             }
             pending.Clear();
@@ -1032,18 +1098,52 @@ namespace RimDelegation
             }
         }
 
+        /// <summary>RIM-29(1A)：委派收尾时**被丢掉**的东西的计数（进信件与留痕，不许静默蒸发）。</summary>
+        public struct DiscardedHaul
+        {
+            /// <summary>丢掉的**缴获件数**（`lootBag` 里还没搬走的那些）。</summary>
+            public int lootCount;
+
+            /// <summary>丢掉的**尸骸具数**。</summary>
+            public int corpseCount;
+
+            public bool Any => lootCount > 0 || corpseCount > 0;
+
+            /// <summary>玩家可见的一行（没什么可说的时返回 null）。例：「另有 7 件缴获没能带走，已丢在战场上。」</summary>
+            public string Line()
+            {
+                if (lootCount > 0 && corpseCount > 0)
+                {
+                    return string.Format("另有 {0} 件缴获与 {1} 具尸骸没能带走，已丢在战场上。", lootCount, corpseCount);
+                }
+                if (lootCount > 0)
+                {
+                    return string.Format("另有 {0} 件缴获没能带走，已丢在战场上。", lootCount);
+                }
+                if (corpseCount > 0)
+                {
+                    return string.Format("另有 {0} 具尸骸没能带走，已丢在战场上。", corpseCount);
+                }
+                return null;
+            }
+        }
+
         /// <summary>
         /// S32：委派**结束/中断**时的收尾 —— 把"还没搬走的东西"丢掉。
         ///
         /// 为什么必须做：待搬的**尸骸是真尸体**（`Corpse` 里裹着那个 pawn）。队伍没走到搜集段就散了的话，
         /// 这两份队列会随委派对象一起变成垃圾 —— 不写进存档（委派已经没了）但也没人收尾。
         /// 原版 `Corpse.Destroy` 会连内部 pawn 一起处理，所以这一步是干净的。
+        ///
+        /// RIM-29(1A)：**返回丢掉了什么**（缴获件数 / 尸骸具数），由 `Complete` / `Abort` 落进信件
+        /// 与留痕 —— 旧写法在这里静默清空，玩家打完一场硬仗只看到"失利"，不知道那批已装箱的缴获没了。
         /// </summary>
-        public static void DiscardPendingHaul(Delegation d)
+        public static DiscardedHaul DiscardPendingHaul(Delegation d)
         {
+            DiscardedHaul result = new DiscardedHaul();
             if (d == null)
             {
-                return;
+                return result;
             }
             if (!d.pendingCorpses.NullOrEmpty())
             {
@@ -1053,14 +1153,24 @@ namespace RimDelegation
                     if (c != null && !c.Destroyed)
                     {
                         c.Destroy();
+                        result.corpseCount++;
                     }
                 }
                 d.pendingCorpses.Clear();
             }
             if (d.lootBag != null)
             {
+                for (int i = 0; i < d.lootBag.Count; i++)
+                {
+                    DelegationLootItem it = d.lootBag[i];
+                    if (it != null)
+                    {
+                        result.lootCount += Mathf.Max(1, it.count);
+                    }
+                }
                 d.lootBag.Clear();
             }
+            return result;
         }
 
         /// <summary>

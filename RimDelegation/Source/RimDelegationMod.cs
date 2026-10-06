@@ -93,6 +93,14 @@ namespace RimDelegation
                 + "　　丢弃 = 什么都不做，就地销毁。产物走原版屠宰口径，所以人肉照常触发食人与心情规则。");
             listing.CheckboxLabeled("　收押倒地守军（当俘虏带回）", ref Settings.cleanupCapturePrisoners);
             listing.Label("　　走原版收押路径（原阵营会记一笔），他们照常吃补给、也可能死在路上。");
+            // RIM-29（拍板 4B）：四条载重路径的「可超载额度」。默认 0 = 与改动前逐字一致。
+            if (listing.ButtonTextLabeled("　可超载额度", Settings.OverloadQuotaLabel()))
+            {
+                Settings.CycleOverloadQuota();
+            }
+            listing.Label("　　战利品 / 尸骸 / 现场物资 / 采矿产出四条路**统一**先装满车，再按这个额度继续装；\n"
+                + "　　到额度上限还装不下的才会丢，并在信件里写明丢了多少。**默认 0 = 绝不超载**（与改动前一致）。\n"
+                + "　　⚠️ 原版超重是「完全不能移动」而不是减速：额度给大了，车队回程会走不动。");
             listing.GapLine();
             // RIM-3（2026-10-05）：Radius UI 皮肤已并入本体，这里只留**阅读偏好**。
             // 按用户拍板，**没有**"皮肤总开关 / 切回原版主控台"这两项：主控台只有一种画法，

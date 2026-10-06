@@ -244,12 +244,24 @@ namespace RimDelegation
             {
                 return "未能交付：矿种未识别";
             }
+            // RIM-29(6A)：矿是**持续产出**，过闸门装不下时**留在矿点**（不销毁，见 DeliverThingToCaravan）——
+            // 那就必须说清还剩多少没装走，否则玩家会以为"采了就都到手了"。
+            // （旧写法：采矿根本不查载重，一路塞到车队走不动为止。）
             if (d.oreDelivered <= 0)
             {
-                return "本次未产出任何矿物";
+                return d.oreUnits >= 1f
+                    ? string.Format("尚未装车：矿点还堆着 {0} × {1}（车队装不下就留着，卸货后继续装）",
+                        Mathf.FloorToInt(d.oreUnits), thingDef.LabelCap)
+                    : "本次未产出任何矿物";
             }
             float value = d.oreDelivered * thingDef.BaseMarketValue;
-            return string.Format("已交付 {0} × {1}（约 {2:0} 银）", d.oreDelivered, thingDef.LabelCap, value);
+            string s = string.Format("已交付 {0} × {1}（约 {2:0} 银）", d.oreDelivered, thingDef.LabelCap, value);
+            if (d.oreUnits >= 1f)
+            {
+                s += string.Format("；另有 {0} 留在矿点尚未装车（车队装不下就留着，卸货后继续装）",
+                    Mathf.FloorToInt(d.oreUnits));
+            }
+            return s;
         }
 
         /// <summary>这一队人一天能挖几格（含工时占比与满意度速率系数）。</summary>

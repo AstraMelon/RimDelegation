@@ -1547,7 +1547,8 @@ namespace RimDelegation
         public void Complete(Delegation d, Site site, string reason)
         {
             FlushPendingNote(d, null);   // S26：要结束了，等公布的结果先落地
-            DelegationUtility.DiscardPendingHaul(d);   // S32：没搬走的东西（真尸体）不能留着
+            // S32：没搬走的东西（真尸体）不能留着；RIM-29(1A)：**丢了多少必须写进信件**（不许静默蒸发）
+            DelegationUtility.DiscardedHaul discarded = DelegationUtility.DiscardPendingHaul(d);
             active = null;
             bool trulyDepleted = d?.TargetDepleted ?? false;
 
@@ -1571,6 +1572,11 @@ namespace RimDelegation
             if (!eventReport.NullOrEmpty())
             {
                 text += "\n\n" + eventReport;
+            }
+            // RIM-29(1A)：收尾丢掉的东西必须写进这封信（旧写法静默清空 lootBag / pendingCorpses）
+            if (discarded.Any)
+            {
+                text += "\n\n" + discarded.Line();
             }
             Find.LetterStack.ReceiveLetter(label, text, LetterDefOf.PositiveEvent);
 
@@ -1611,7 +1617,9 @@ namespace RimDelegation
                 return;
             }
             FlushPendingNote(d, null);   // S26：同 Complete —— 中断也要把等公布的结果落地
-            DelegationUtility.DiscardPendingHaul(d);   // S32：同上（没搬走的尸骸就地丢弃）
+            // S32：同上（没搬走的尸骸就地丢弃）；RIM-29(1A/3A)：中断信里单列一行"丢了多少"，
+            // 这条路径本来最容易被玩家误解（"交火失利"那封信以前一个字都不提那批已装箱的缴获）
+            DelegationUtility.DiscardedHaul discarded = DelegationUtility.DiscardPendingHaul(d);
             active = null;
             Site site = Site;
 
@@ -1633,6 +1641,12 @@ namespace RimDelegation
             if (!eventReport.NullOrEmpty())
             {
                 text += "\n\n" + eventReport;
+            }
+            // RIM-29(1A/3A)：失利/中止时**单列一行**"已缴获但没搬走"的部分
+            //（旧写法：交火失利那封信只写"失利"，那批已经装进 lootBag 的缴获一个字都不提）
+            if (discarded.Any)
+            {
+                text += "\n\n" + discarded.Line();
             }
             Find.LetterStack.ReceiveLetter(label, text, LetterDefOf.NegativeEvent);
 

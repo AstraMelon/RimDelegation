@@ -601,8 +601,9 @@ namespace RimDelegation
             // 本 tick 可用的质量预算 = 本 tick 产出 + 上一次攒下的余数
             float budget = MassBudget(d, delta, TripsPerWorkHour) + Mathf.Max(0f, d.haulCarryOverKg);
 
-            // 车队还能装多少（kg）
-            float freeSpace = Mathf.Max(0f, caravan.MassCapacity - caravan.MassUsage);
+            // 车队还能装多少（kg）—— RIM-29(4B)：与战利品 / 尸骸 / 采矿产出**同一道闸门**
+            //（口径 = MassCapacity + 可超载额度 − MassUsage；默认额度 0 = 与改动前逐字一致）
+            float freeSpace = DelegationUtility.OverloadBudgetKg(caravan);
 
             List<Thing> list = Snapshot(owner);
             List<Thing> batch = new List<Thing>();
@@ -711,7 +712,9 @@ namespace RimDelegation
                 return null;   // 现场空了 —— 交给宿主的 TargetDepleted 判定
             }
 
-            float free = d.caravan.MassCapacity - d.caravan.MassUsage;
+            // RIM-29(4B)：「装满」的判据也要走同一道闸门 —— 否则额度设成 +100 时，
+            // 这里会因为 MassUsage ≥ MassCapacity 而提前收工，与逐件闸门口径打架。
+            float free = DelegationUtility.OverloadBudgetKg(d.caravan);
             float lightest = LightestMass(owner);
             // 还有空间装下至少一件 → 继续干
             if (free > 0f && (lightest <= 0f || free >= lightest))

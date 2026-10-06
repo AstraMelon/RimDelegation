@@ -120,6 +120,33 @@ namespace RimDelegation
         /// <summary>S31：收押**倒地**的守军当俘虏（用户拍板 4A：无条件收）。走原版 `Caravan.AddPawn` 自动收押。</summary>
         public bool cleanupCapturePrisoners = true;
 
+        // ── RIM-29（拍板 4B「软闸门」）：可超载额度 ────────────────────────────────
+
+        /// <summary>
+        /// RIM-29(4B)：**可超载额度**（kg）—— 四条载重路径（战利品 / 尸骸 / 现场物资 / 采矿产出）
+        /// 先把车队装到 `MassCapacity`，还能再按这个额度继续装；到额度上限仍装不下的才丢。
+        ///
+        /// 默认 `0` ＝ 与改动前**逐字一致**（按原版容量硬闸门，绝不超载）。
+        /// 为什么必须让玩家自己定额度：原版超重是**二分状态**（`Caravan.ImmobilizedByMass` ⇒
+        /// 完全不能移动，**不是减速**），所以"允许超载"等于"允许把车队塞到走不动"。
+        /// 判据唯一一份：`DelegationUtility.OverloadBudgetKg`（四条路径全走它）。
+        /// </summary>
+        public float overloadQuotaKg = 0f;
+
+        /// <summary>可超载额度的档位（设置页按钮只能给档位，不是滑条；想要更细的值直接手改配置 xml）。</summary>
+        private static readonly float[] OverloadQuotaSteps = { 0f, 50f, 100f, 200f, 500f };
+
+        public void CycleOverloadQuota()
+        {
+            overloadQuotaKg = NextStep(OverloadQuotaSteps, overloadQuotaKg, 0);
+        }
+
+        /// <summary>设置页上那一行的显示文本。</summary>
+        public string OverloadQuotaLabel()
+        {
+            return overloadQuotaKg <= 0f ? "不超载（0 kg）" : "+" + overloadQuotaKg.ToString("0") + " kg";
+        }
+
         // ── 主控台皮肤（Radius UI）的本地阅读偏好 ────────────────────────────────
         //
         // RIM-3（2026-10-05）：皮肤并入本体 ⇒ 原来的 `RadiusUISkinSettings` 也并进这里。
@@ -272,6 +299,12 @@ namespace RimDelegation
             Scribe_Values.Look(ref cleanupTakeEquipment, "cleanupTakeEquipment", true);
             Scribe_Values.Look(ref corpseCleanup, "corpseCleanup", CorpseCleanupMode.ButcherHere);
             Scribe_Values.Look(ref cleanupCapturePrisoners, "cleanupCapturePrisoners", true);
+            // RIM-29(4B)：可超载额度（默认 0 = 与改动前逐字一致）。手改配置写坏时洗回 0。
+            Scribe_Values.Look(ref overloadQuotaKg, "overloadQuotaKg", 0f);
+            if (float.IsNaN(overloadQuotaKg) || float.IsInfinity(overloadQuotaKg) || overloadQuotaKg < 0f)
+            {
+                overloadQuotaKg = 0f;
+            }
             // 主控台皮肤（原 RadiusUISkinSettings，RIM-3 并入；键名一字未改）
             Scribe_Collections.Look(ref pinnedSites, "pinnedSites", LookMode.Value);
             Scribe_Values.Look(ref collapsedLeft, "collapsedLeft", false);
