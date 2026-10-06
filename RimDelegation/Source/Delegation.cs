@@ -194,6 +194,16 @@ namespace RimDelegation
         /// </summary>
         public List<DelegationLootItem> takenRows = new List<DelegationLootItem>();
 
+        /// <summary>
+        /// RIM-31(2A)：**本趟没能带走的那些**（缴获里装不下的部分），给 UI 的「战场清点」表用。
+        ///
+        /// 为什么要有：`takenRows` 只记"带上了什么"，于是表格呈现的是"这趟很划算"，
+        /// 而段说明行同时写着"剩下的 N 件被丢在战场上"（RIM-29）—— 两处口径打架。
+        /// 条目齐优先于条目精（用户口径）：宁可多一行"没带走"，也不要让那一行消失。
+        /// 旧存档为 null ⇒ UI 直接不画这一段。
+        /// </summary>
+        public List<DelegationLootItem> droppedRows = new List<DelegationLootItem>();
+
         /// <summary>S31：就地处理掉的**尸骸数**（2B：不带尸体回家，但要在物资表里给它一行）。
         /// S33 起这个数**含补刀处置掉的倒地动物**（见 <see cref="downedAnimalsDisposed" />）。</summary>
         public int corpsesButchered;
@@ -839,6 +849,8 @@ namespace RimDelegation
             }
             // S31：战场清点的账（装车的东西 / 尸骸数 / 俘虏）
             Scribe_Collections.Look(ref takenRows, "roTakenRows", LookMode.Deep);
+            // RIM-31(2A)：「没带走」的那份账（旧存档为 null ⇒ UI 不画这一段）
+            Scribe_Collections.Look(ref droppedRows, "roDroppedRows", LookMode.Deep);
             if (takenRows == null)
             {
                 takenRows = new List<DelegationLootItem>();

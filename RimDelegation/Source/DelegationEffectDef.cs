@@ -461,7 +461,12 @@ namespace RimDelegation
             {
                 return null;
             }
-            string note = DelegationUtility.TakeLoot(d.caravan, d.lootBag, d.takenRows);
+            // RIM-31：`droppedRows` 收"没带走的那部分"，给「战场清点」表补一段（旧存档为 null ⇒ 这里补一个）
+            if (d.droppedRows == null)
+            {
+                d.droppedRows = new List<DelegationLootItem>();
+            }
+            string note = DelegationUtility.TakeLoot(d.caravan, d.lootBag, d.takenRows, d.droppedRows);
             if (d.lootBag != null)
             {
                 // 搬完就清空：这份清单的使命结束了（否则读档后会被再搬一次 = 刷战利品）

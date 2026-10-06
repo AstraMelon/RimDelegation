@@ -545,7 +545,12 @@ namespace RimDelegation
                 {
                     d.lootBag.AddRange(DelegationUtility.CaptureLoot(setup, result));
                 }
-                string lootNote = DelegationUtility.TakeLoot(caravan, d.lootBag, d.takenRows);
+                // RIM-31：同搜集段 —— 「没带走」的那部分也要留账（旧存档为 null 时补一个）
+                if (d.droppedRows == null)
+                {
+                    d.droppedRows = new List<DelegationLootItem>();
+                }
+                string lootNote = DelegationUtility.TakeLoot(caravan, d.lootBag, d.takenRows, d.droppedRows);
                 d.lootBag.Clear();   // 搬完就清空（与搜集段同一条规矩：别让读档重搬）
                 // S32「带走」档：尸骸也在这里装车（营救没有流程段，所以就地结算）
                 int hauled;

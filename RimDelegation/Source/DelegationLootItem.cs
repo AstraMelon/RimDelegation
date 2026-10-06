@@ -42,8 +42,21 @@ namespace RimDelegation
         /// <summary>单件质量（kg）。只用于"装不装得下"的估算。</summary>
         public float UnitMass => def == null ? 0f : def.GetStatValueAbstract(StatDefOf.Mass, stuff);
 
-        /// <summary>这一条的估值（银）——**排序用**的粗略值：基础市价 × 数量（品质加成在造出实物后才算准）。</summary>
-        public float SortValue => def == null ? 0f : def.BaseMarketValue * count;
+        /// <summary>
+        /// RIM-31：这一条的**真实单件市价**（银）—— 造出实物之后取的 `Thing.MarketValue`，
+        /// 含品质 / 材质 / 武器特性。`0` = 还没造过实物（旧存档的行、或只是"待搬"的账），
+        /// 此时按 <see cref="SortValue" /> 退回粗估。
+        /// </summary>
+        public float unitMarketValue;
+
+        /// <summary>
+        /// 这一条的估值（银）——**排序与 UI 表格的唯一来源**（RIM-31 起）。
+        /// 优先用真实市价（造实物时写进 <see cref="unitMarketValue" />），没有时退回
+        /// `BaseMarketValue × count` 那份粗估（旧存档）。旧写法两处各有一套口径：
+        /// 排序与表格用粗估、段说明行用真实市价 ⇒ 一把传奇枪在两个地方差约 5 倍。
+        /// </summary>
+        public float SortValue => def == null ? 0f
+            : (unitMarketValue > 0f ? unitMarketValue : def.BaseMarketValue) * count;
 
         public void ExposeData()
         {
@@ -52,6 +65,7 @@ namespace RimDelegation
             Scribe_Values.Look(ref count, "count", 1);
             Scribe_Values.Look(ref quality, "quality", -1);
             Scribe_Values.Look(ref enemyIndex, "enemyIndex", 0);
+            Scribe_Values.Look(ref unitMarketValue, "unitMarketValue", 0f);
         }
     }
 }

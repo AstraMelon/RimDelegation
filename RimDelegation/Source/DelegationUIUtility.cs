@@ -873,8 +873,11 @@ namespace RimDelegation
         /// 用户拍板 3B：**尸骸也要在物资表里有一行** —— 2B 是就地屠宰、尸体不带回家，
         /// 但"这趟宰了 N 具"这件事必须看得见（看不见等于没做，这是他反复强调过的一条）。
         ///
-        /// 量纲注意：<see cref="DelegationPreviewItem.value" /> 这里用的是**基础市价 × 数量**
-        /// （品质加成要造出实物才算得准）—— 那一句精确的总价在搜集段写给玩家的说明里。
+        /// 量纲注意（RIM-31 起）：<see cref="DelegationPreviewItem.value" /> 用的是**真实市价**
+        /// （`DelegationLootItem.SortValue` 优先读造实物时记下的 `unitMarketValue`），与段说明行同源；
+        /// 旧存档的行没有那个值，退回"基础市价 × 数量"的粗估。
+        /// **没带走的那部分**（<see cref="Delegation.droppedRows" />）也各占一行，但 `value` 记 0 ——
+        /// 表头那句「市价合计」只该算**带回营地的**东西。
         /// </summary>
         public static List<DelegationPreviewItem> CleanupRows(Delegation d)
         {
@@ -928,6 +931,33 @@ namespace RimDelegation
                         unitLabel = "件",
                         mass = mass,
                         value = it.SortValue,
+                    });
+                }
+            }
+
+            // RIM-31(2A)：本趟**没能带走**的那些也各占一行 —— 条目齐优先于条目精（用户口径），
+            // 否则表格只画"带上了什么"，与段说明行"剩下的 N 件被丢在战场上"（RIM-29）口径打架。
+            // `value` 记 0：表头那句「市价合计」只算带回营地的部分。
+            if (!d.droppedRows.NullOrEmpty())
+            {
+                for (int i = 0; i < d.droppedRows.Count; i++)
+                {
+                    DelegationLootItem it = d.droppedRows[i];
+                    if (it?.def == null || it.count <= 0)
+                    {
+                        continue;
+                    }
+                    float mass = it.UnitMass * it.count;
+                    rows.Add(new DelegationPreviewItem
+                    {
+                        thingDef = it.def,
+                        label = it.def.LabelCap + "（没带走）",
+                        detail = string.Format("×{0} 件 · {1:0.#} kg · 约 {2:0} 银 · 已丢在战场上",
+                            it.count, mass, it.SortValue),
+                        count = it.count,
+                        unitLabel = "件",
+                        mass = mass,
+                        value = 0f,
                     });
                 }
             }

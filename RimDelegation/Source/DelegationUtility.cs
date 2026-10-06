@@ -673,9 +673,15 @@ namespace RimDelegation
         /// 装不下的留在原地（与物资藏匿点"装满就收工"同一个道理）。返回给玩家看的那句话。
         ///
         /// 品质与材质都还原（缴获回来的枪该是"极佳"就是"极佳"）；**耐久不还原**（见 `DelegationLootItem`）。
+        ///
+        /// **RIM-31(1A)**：改成"**先造实物、再按真实市价排**"两遍 —— 排序、说明行的银、UI 表格
+        /// 三处统一走 `Thing.MarketValue`（含品质 / 材质 / 武器特性）。旧写法一边用
+        /// `BaseMarketValue × count` 粗估排序与画表、一边用真实市价写说明 ⇒ 一把传奇枪差约 5 倍，
+        /// 而且"值钱的先装"是假的（载重不够时先丢下的反而是真正值钱的那件）。
+        /// **RIM-31(2A)**：`leftInto` 记下**没带走**的那些（给「战场清点」表补"未带走"那一段）。
         /// </summary>
         public static string TakeLoot(Caravan caravan, List<DelegationLootItem> loot,
-            List<DelegationLootItem> takenInto = null)
+            List<DelegationLootItem> takenInto = null, List<DelegationLootItem> leftInto = null)
         {
             if (caravan == null || caravan.Destroyed)
             {
@@ -686,20 +692,60 @@ namespace RimDelegation
                 return "战场上没剩下能带走的东西。";
             }
 
-            List<DelegationLootItem> sorted = new List<DelegationLootItem>(loot);
-            sorted.Sort((a, b) => b.SortValue.CompareTo(a.SortValue));
+            // ── RIM-31(1A) 第一遍：**先造实物、取真实单件市价**，再按真实总价从高到低排 ──
+            // 旧写法用 `DelegationLootItem.SortValue`＝`BaseMarketValue × count`（不看品质/材质）
+            // 排序，而在装载循环里又用 `thing.MarketValue`（含品质/材质）累计说明行的银
+            // ⇒ 一把传奇枪在两个地方差约 5 倍，且"值钱的先装"这句承诺是假的。
+            List<LootCandidate> candidates = new List<LootCandidate>();
+            for (int i = 0; i < loot.Count; i++)
+            {
+                DelegationLootItem item = loot[i];
+                if (item?.def == null || item.count <= 0)
+                {
+                    continue;
+                }
+                Thing thing = null;
+                try
+                {
+                    thing = ThingMaker.MakeThing(item.def, item.stuff);
+                    thing.stackCount = item.count;
+                    CompQuality cq = (thing as ThingWithComps)?.TryGetComp<CompQuality>();
+                    if (cq != null && item.quality >= 0)
+                    {
+                        cq.SetQuality((QualityCategory)item.quality, null);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Log.WarningOnce("[RimDelegation] 缴获实物化失败（" + item.def.defName + "）：" + ex.Message, 0x5E0CA1);
+                    if (leftInto != null)
+                    {
+                        leftInto.Add(CloneRow(item, 0f));
+                    }
+                    continue;
+                }
+                float unitValue = 0f;
+                try
+                {
+                    unitValue = Mathf.Max(0f, thing.MarketValue);
+                }
+                catch (Exception)
+                {
+                    unitValue = 0f;   // 取不到市价就按 0 排（不编数字）
+                }
+                candidates.Add(new LootCandidate { item = item, thing = thing, unitValue = unitValue });
+            }
+            candidates.Sort((a, b) => (b.unitValue * b.item.count).CompareTo(a.unitValue * a.item.count));
 
             float free = OverloadBudgetKg(caravan);   // RIM-29(4B)：四条路径唯一的闸门（默认额度 0 = 与改动前一致）
             int taken = 0, left = 0;
             float mass = 0f, value = 0f;
             List<string> shown = new List<string>();
-            for (int i = 0; i < sorted.Count; i++)
+            // ── 第二遍：按闸门装车（实物已经在手上，直接改 stackCount 再交出去）──
+            for (int i = 0; i < candidates.Count; i++)
             {
-                DelegationLootItem item = sorted[i];
-                if (item?.def == null || item.count <= 0)
-                {
-                    continue;
-                }
+                LootCandidate cand = candidates[i];
+                DelegationLootItem item = cand.item;
                 float unitMass = Mathf.Max(0f, item.UnitMass);
                 int take = item.count;
                 if (item.def.stackLimit > 1 && unitMass > 0.0001f)
@@ -714,43 +760,37 @@ namespace RimDelegation
                 if (take <= 0)
                 {
                     left += item.count;
+                    if (leftInto != null)
+                    {
+                        leftInto.Add(CloneRow(item, cand.unitValue));
+                    }
                     continue;
                 }
 
-                Thing thing;
                 try
                 {
-                    thing = ThingMaker.MakeThing(item.def, item.stuff);
-                    thing.stackCount = take;
-                    CompQuality cq = (thing as ThingWithComps)?.TryGetComp<CompQuality>();
-                    if (cq != null && item.quality >= 0)
-                    {
-                        cq.SetQuality((QualityCategory)item.quality, null);
-                    }
-                    caravan.AddPawnOrItem(thing, false);
+                    cand.thing.stackCount = take;
+                    caravan.AddPawnOrItem(cand.thing, false);
                 }
                 catch (Exception ex)
                 {
                     Log.WarningOnce("[RimDelegation] 缴获交货失败（" + item.def.defName + "）：" + ex.Message, 0x5E0CA1);
                     left += item.count;
+                    if (leftInto != null)
+                    {
+                        leftInto.Add(CloneRow(item, cand.unitValue));
+                    }
                     continue;
                 }
 
                 taken += take;
                 mass += unitMass * take;
-                value += thing.MarketValue * Mathf.Max(1, thing.stackCount);
+                value += cand.unitValue * take;   // RIM-31：与排序同一个数（真实市价）
                 free -= unitMass * take;
                 if (takenInto != null)
                 {
                     // S31：记一笔"实际装车的东西"，给 UI 的「战场清点」表用（lootBag 马上要被清空）
-                    takenInto.Add(new DelegationLootItem
-                    {
-                        def = item.def,
-                        stuff = item.stuff,
-                        count = take,
-                        quality = item.quality,
-                        enemyIndex = item.enemyIndex,
-                    });
+                    takenInto.Add(CloneRow(item, cand.unitValue, take));
                 }
                 if (shown.Count < 4)
                 {
@@ -759,6 +799,11 @@ namespace RimDelegation
                 if (take < item.count)
                 {
                     left += item.count - take;
+                    if (leftInto != null)
+                    {
+                        // RIM-31(2A)：这部分**没带走**也要进表（与段说明行"剩下的 N 件被丢在战场上"配套）
+                        leftInto.Add(CloneRow(item, cand.unitValue, item.count - take));
+                    }
                 }
             }
 
@@ -769,7 +814,7 @@ namespace RimDelegation
             StringBuilder sb = new StringBuilder();
             sb.AppendFormat("缴获 {0} 件（合计 {1:0.#} kg · 市价约 {2:0} 银）：{3}",
                 taken, mass, value, string.Join("、", shown.ToArray()));
-            if (sorted.Count > shown.Count)
+            if (candidates.Count > shown.Count)
             {
                 sb.Append(" 等");
             }
@@ -785,6 +830,31 @@ namespace RimDelegation
                 sb.Append("\n车队已超重 —— 超重会让远行队无法移动。");
             }
             return sb.ToString();
+        }
+
+        /// <summary>RIM-31：装载两遍之间的中间件 —— 已造好的实物 ＋ 它的真实单件市价。</summary>
+        private sealed class LootCandidate
+        {
+            public DelegationLootItem item;
+            public Thing thing;
+            public float unitValue;
+        }
+
+        /// <summary>
+        /// RIM-31：把一条缴获账目复制成 UI 用的行（`count &lt; 0` = 用原数量），并写上真实单件市价
+        /// —— 表格与段说明行从此同源（`DelegationLootItem.SortValue` 会优先用它）。
+        /// </summary>
+        private static DelegationLootItem CloneRow(DelegationLootItem src, float unitValue, int count = -1)
+        {
+            return new DelegationLootItem
+            {
+                def = src.def,
+                stuff = src.stuff,
+                count = count < 0 ? src.count : count,
+                quality = src.quality,
+                enemyIndex = src.enemyIndex,
+                unitMarketValue = unitValue,
+            };
         }
 
         // ================================================================ S31：打扫战场（尸骸 / 俘虏）
