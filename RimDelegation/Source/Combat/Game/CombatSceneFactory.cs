@@ -95,9 +95,12 @@ namespace RimDelegation.Combat
         /// （潜入被发现转强攻的代价）：折算成我方开局的耐久折扣。
         /// 折扣作用在**快照**上，所以委派结算与对话框里的威胁评估看到的是同一个战场
         /// —— "预告即契约"（DESIGN §19.12）。
+        ///
+        /// <paramref name="ourRoster"/> = **这次委派的参与者名单**（RIM-26 拍板 1A）。
+        /// 传 null 才退回"整个车队"的旧行为 —— 只有没经过参与者解析的调用方才该这么用。
         /// </summary>
         public static CombatSetup Build(Caravan caravan, Site site, float ourFirstStrikePenalty = 0f,
-            List<Pawn> excludeFromCombat = null, bool keepPawns = false)
+            List<Pawn> excludeFromCombat = null, bool keepPawns = false, List<Pawn> ourRoster = null)
         {
             CombatSetup setup = new CombatSetup { Caravan = caravan, Site = site };
             if (caravan == null || site == null) return setup;
@@ -126,8 +129,22 @@ namespace RimDelegation.Combat
                 LogFilter = CombatLogFilter.Default,
             };
 
-            // ── 我方：车队里的殖民者与动物 ──
-            List<Pawn> ours = caravan.PawnsListForReading;
+            // ── 我方：**只有这次委派的参与者**（RIM-26 拍板 1A）──
+            // 旧写法取 `caravan.PawnsListForReading`＝整个车队（含驮兽、没参加这趟的人、还带着武器的囚犯），
+            // 而伤亡只往 `d.participants` 身上落 ⇒ 战报说"我方 2 阵亡"而车队一个人都没少；
+            // 多出来的人和动物还替参与者分担火力（这一仗比面板上算的更容易赢）。
+            // 现在"谁进模型"与"谁承担伤亡"是**同一份名单**，第三种情况不存在。
+            List<Pawn> ours = ourRoster;
+            if (ours.NullOrEmpty())
+            {
+                // 存档自愈（准则⑥）：名单缺失或为空（异常数据）时退回整个车队 ——
+                // 绝不让"我方零单位"的模型静默变成一场必败仗。这件事本身也要说出来（不静默）。
+                if (ourRoster != null)
+                {
+                    setup.OurNotes.Add("参与者名单为空，已按整个车队推演");
+                }
+                ours = caravan.PawnsListForReading;
+            }
             for (int i = 0; i < ours.Count; i++)
             {
                 Pawn p = ours[i];

@@ -169,10 +169,13 @@ namespace RimDelegation
         /// 委派对话框会把当前作战姿态的折扣传进来，保证这里的预告与委派实际结算
         /// 看到的是同一个战场。
         /// </summary>
+        /// <paramref name="ourRoster"/> = 这次委派的参与者名单（RIM-26 拍板 1A：只有参与者进场）。
+        /// </summary>
         public static CombatSetup Build(Caravan caravan, Site site, float firstStrikePenalty = 0f,
-            List<Pawn> excludeFromCombat = null)
+            List<Pawn> excludeFromCombat = null, List<Pawn> ourRoster = null)
         {
-            return CombatSceneFactory.Build(caravan, site, firstStrikePenalty, excludeFromCombat);
+            return CombatSceneFactory.Build(caravan, site, firstStrikePenalty, excludeFromCombat,
+                ourRoster: ourRoster);
         }
 
         /// <summary>

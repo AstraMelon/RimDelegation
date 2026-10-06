@@ -361,7 +361,9 @@ namespace RimDelegation
                 ? DelegationApproachDef.FirstStrikePenalty(d.approach)
                 : 0f;
 
-            CombatSetup setup = CombatSceneFactory.Build(d.caravan, site, firstStrike, d.noCombatPawns, keepPawns: true);
+            // RIM-26(1A)：进模型的名单 = `d.participants`（与伤亡落实的池**同一份**）
+            CombatSetup setup = CombatSceneFactory.Build(d.caravan, site, firstStrike, d.noCombatPawns,
+                keepPawns: true, ourRoster: d.participants);
             if (!setup.CanAssess)
             {
                 // 抽象模型兜不住（例如 Mechanoid 集群）：不装作打赢，也不静默通过 —— 直接中止

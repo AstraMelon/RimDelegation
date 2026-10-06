@@ -480,7 +480,10 @@ namespace RimDelegation
             // 玩家勾掉的"不参战"对营救清场完全无效（与主列/交战段口径不同源）。
             float firstStrike = DelegationApproachDef.FirstStrikePenalty(approach);
 
-            CombatSetup setup = CombatSceneFactory.Build(caravan, site, firstStrike, d.noCombatPawns, keepPawns: true);
+            // RIM-26(1A)：进模型的名单 = `d.participants`（与伤亡落实的池同一份）；
+            // 2A：`d.noCombatPawns` 也真的传进去（「不参战」勾选对营救清场生效）
+            CombatSetup setup = CombatSceneFactory.Build(caravan, site, firstStrike, d.noCombatPawns,
+                keepPawns: true, ourRoster: d.participants);
             if (!setup.CanAssess)
             {
                 d.workerStage = StageAssaultLost;

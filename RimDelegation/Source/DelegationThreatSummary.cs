@@ -211,7 +211,7 @@ namespace RimDelegation
             CombatSetup setup;
             try
             {
-                setup = ThreatAssessmentEntry.Build(caravan, site, penalty, excludeFromCombat);
+                setup = ThreatAssessmentEntry.Build(caravan, site, penalty, excludeFromCombat, participants);
             }
             catch (Exception ex)
             {
