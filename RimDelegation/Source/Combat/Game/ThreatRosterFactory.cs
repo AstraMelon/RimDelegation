@@ -164,7 +164,7 @@ namespace RimDelegation.Combat
                                 break;
 
                             case "Turrets":
-                                GenerateTurrets(r, part);
+                                GenerateTurrets(r, site, part);
                                 break;
 
                             // ★ 2026-09-30：工作站点（两批守军）
@@ -372,8 +372,11 @@ namespace RimDelegation.Combat
         ///     turretsCount = Clamp(round(威胁点数 / Turret_MiniTurret.building.combatPower), 2, 11)
         ///     mortarsCount = Rand.RangeInclusive(0, 1)
         /// 老存档若没写 turretsCount，就按**同一个公式**从 threatPoints 反推，保证与进图一致。
+        ///
+        /// **RIM-23(1A)**：这一件在原版进图时还恒定附带 **1 名边缘守卫**，所以本方法先补那一人
+        /// （见 <see cref="GenerateTurretGuard" />）再产炮塔 —— 顺序也照抄原版（守卫先于炮塔）。
         /// </summary>
-        private static void GenerateTurrets(Result r, SitePart part)
+        private static void GenerateTurrets(Result r, Site site, SitePart part)
         {
             ThingDef turretDef = CombatSnapshotFactory.TurretDefOfChoice;
             if (turretDef?.building == null)
@@ -381,6 +384,11 @@ namespace RimDelegation.Combat
                 r.Unresolved.Add("炮塔：找不到 " + (turretDef?.defName ?? "Turret_MiniTurret"));
                 return;
             }
+
+            // ★ RIM-23(1A)：原版 `GenStep_Turrets.guardsCountRange = new IntRange(1, 1)`
+            //   （另有 `DefaultGuardsCount = 1`）⇒ 恒定 1 名，且与 turretsCount 无关。
+            //   用户拍板 1A：补上它（会让现有 4 条可能出炮塔的委派手感变化，这是预期内的）。
+            GenerateTurretGuard(r, site, part);
 
             int combatPower = Mathf.Max(1, Mathf.RoundToInt(turretDef.building.combatPower));
             int count = part.parms.turretsCount > 0
@@ -426,6 +434,90 @@ namespace RimDelegation.Combat
             }
         }
 
+        /// <summary>
+        /// RIM-23(1A)：`Turrets` 威胁件在原版进图时恒定附带的 **1 名「边缘守卫」**。
+        ///
+        /// 全流程照抄原版（反编译 rw16b / MVID `61e41735…`）：
+        ///   · `GenStep_Turrets.Generate` 把 `guardsCountRange.RandomInRange`（= **1**）传成
+        ///     `edgeDefenseGuardsCount`；
+        ///   · `SymbolResolver_EdgeDefense.Resolve` 对每名守卫构造
+        ///     `new PawnGenerationRequest(faction.RandomPawnKind(), faction, NonPlayer, map.Tile,
+        ///       forceGenerateNewPawn: false, allowDead: false, allowDowned: false,
+        ///       canGeneratePawnRelations: true, mustBeCapableOfViolence: true)`；
+        ///   · `Faction.RandomPawnKind()` = 该派系 `pawnGroupMakers` 里所有 **humanlike** 项 `RandomElement()`
+        ///     （一项都没有时退回 `def.basicMemberKind`）。
+        ///
+        /// 原版这条路径**没有** `Rand.PushState`。若照字面"无种子"地生成，会同时踩两个坑：
+        ///   ① 每打开一次威胁评估面板/主列就重掷一次种类 ⇒ **评估与结算不是同一份编队**，
+        ///      恰好违反本议题自己的「五、验收标准」第 2 条；
+        ///   ② 威胁摘要缓存每帧重建，会**吃掉世界随机数流**（与 RIM-25 修掉的那个坑同类）。
+        /// 所以这里采用与 RIM-25(1A/2A) **完全同款**的输入同源做法：种子取 `part.parms.randomValue`
+        /// （原版建点那一刻 `Rand.Int` 掷定、随存档）；兵种仍由 `faction.RandomPawnKind()` 决定
+        /// —— 这是对拍板 1A "无种子"字面的一处**有意偏离**，已在交付评论里显式标注待你确认。
+        /// 2B：不在 `InspectWarning` 里写明"这是推演值"。
+        /// </summary>
+        private static void GenerateTurretGuard(Result r, Site site, SitePart part)
+        {
+            Faction faction = site?.Faction;
+            if (faction == null)
+            {
+                r.Notes.Add("炮塔·边缘守卫：没有可用派系，未生成（与原版同为 0 人）");
+                return;
+            }
+
+            int seed = part.parms.randomValue;
+            Pawn p = null;
+            Rand.PushState(seed);
+            try
+            {
+                PawnGenerationRequest req = new PawnGenerationRequest(
+                    faction.RandomPawnKind(), faction, PawnGenerationContext.NonPlayer, site.Tile,
+                    forceGenerateNewPawn: false, allowDead: false, allowDowned: false,
+                    canGeneratePawnRelations: true, mustBeCapableOfViolence: true);
+                p = PawnGenerator.GeneratePawn(req);
+            }
+            catch (Exception ex)
+            {
+                r.Notes.Add("炮塔·边缘守卫：生成失败（" + ex.GetType().Name + "）");
+                return;
+            }
+            finally
+            {
+                Rand.PopState();
+            }
+
+            if (p == null)
+            {
+                r.Notes.Add("炮塔·边缘守卫：生成为空");
+                return;
+            }
+
+            string problem;
+            CombatUnitSnapshot snap = CombatSnapshotFactory.FromPawn(p, false, out problem);
+            if (snap == null)
+            {
+                if (problem != null) r.Notes.Add(problem);
+                if (!r.keepPawns) Discard(p);
+                return;
+            }
+
+            snap.HasTerrainAdvantage = true;    // 与炮塔同为工事里的守军
+            int enemyIndex = r.Enemies.Count;   // 与 GeneratePawnGroup 同款：下标取全局计数，不用局部计数
+            r.Enemies.Add(snap);
+            CaptureLoot(r, p, enemyIndex);
+            if (r.keepPawns)
+            {
+                r.SetPawnAt(enemyIndex, p);
+            }
+            else
+            {
+                Discard(p);
+            }
+
+            r.Notes.Add("炮塔·边缘守卫：1 名 " + p.kindDef.LabelCap +
+                        "（原版 guardsCountRange = (1,1)；本 mod 按输入同源用种子 " + seed + "）");
+        }
+
         private static void GenerateManhunters(Result r, SitePart part)
         {
             PawnKindDef kind = part.parms.animalKind;
@@ -437,34 +529,59 @@ namespace RimDelegation.Combat
 
             int n = AggressiveAnimalIncidentUtility.GetAnimalsCount(kind, part.parms.threatPoints);
             int count = 0;
-            for (int i = 0; i < n; i++)
-            {
-                Pawn p = null;
-                try { p = PawnGenerator.GeneratePawn(kind, null); }
-                catch (Exception ex) { r.Notes.Add("猎杀人类：生成失败（" + ex.GetType().Name + "）"); break; }
 
-                if (p == null) continue;
-                string problem;
-                CombatUnitSnapshot snap = CombatSnapshotFactory.FromPawn(p, false, out problem);
-                if (snap != null)
+            // ★ RIM-25(1A/2A)：这是**唯一**没有隔离随机数流的生成路径。
+            //   `PawnGenerator.GeneratePawn` 内部处处用 `Rand`（年龄 / 性别 / 健康 / 装备），
+            //   不包种子的两个后果（与 `GeneratePawnGroup` 里那段注释同源）：
+            //     ① 每打开一次威胁评估面板 / 主列就重掷一份名册 ⇒ 面板算的名册 ≠ 结算用的名册，
+            //        违背"预告即契约"（§19.12）的输入同源前提；
+            //     ② 从 UI（每帧缓存重建、对话框）调用会**吃掉世界随机数流**，之后的世界事件序列被静默推进。
+            //   种子取 `part.parms.randomValue`（拍板 2A）：反编译确认原版
+            //   `SitePartWorker.GenerateDefaultParams` 就是 `randomValue = Rand.Int`，
+            //   并由 `SitePartParams.ExposeData` 的 `Scribe_Values.Look(ref randomValue, "randomValue", 0)`
+            //   随存档 —— 建点那一刻掷定，是"与原版同源"的那颗种子（`site.ID` 虽稳定但与建点掷骰无关）。
+            //   3B：不在 `InspectWarning` 里写"野兽编队为推演值"。
+            int seed = part.parms.randomValue;
+            Rand.PushState(seed);
+            try
+            {
+                for (int i = 0; i < n; i++)
                 {
-                    snap.HasTerrainAdvantage = false;
-                    r.Enemies.Add(snap);
-                    CaptureLoot(r, p, count);
-                    if (r.keepPawns)
+                    Pawn p = null;
+                    try { p = PawnGenerator.GeneratePawn(kind, null); }
+                    catch (Exception ex) { r.Notes.Add("猎杀人类：生成失败（" + ex.GetType().Name + "）"); break; }
+
+                    if (p == null) continue;
+                    string problem;
+                    CombatUnitSnapshot snap = CombatSnapshotFactory.FromPawn(p, false, out problem);
+                    if (snap != null)
                     {
-                        r.SetPawnAt(count, p);
+                        snap.HasTerrainAdvantage = false;
+                        // ★ 下标必须取**全局**的 `r.Enemies.Count`，不能用从 0 起的局部计数器：
+                        //   同一地点可能有第二个威胁部件 ⇒ 否则缴获会记到错误的敌人头上，
+                        //   被覆盖的那只真 pawn 还会逃过收尾销毁（永久泄漏）。
+                        int enemyIndex = r.Enemies.Count;
+                        r.Enemies.Add(snap);
+                        CaptureLoot(r, p, enemyIndex);
+                        if (r.keepPawns)
+                        {
+                            r.SetPawnAt(enemyIndex, p);
+                        }
+                        count++;
                     }
-                    count++;
+                    if (!r.keepPawns)
+                    {
+                        Discard(p);
+                    }
                 }
-                if (!r.keepPawns)
-                {
-                    Discard(p);
-                }
+            }
+            finally
+            {
+                Rand.PopState();
             }
 
             r.Notes.Add("猎杀人类：" + kind.LabelCap + " × " + count +
-                        "（威胁点数 " + part.parms.threatPoints.ToString("0") + "）");
+                        "（威胁点数 " + part.parms.threatPoints.ToString("0") + "，种子 " + seed + "）");
         }
 
         /// <summary>
