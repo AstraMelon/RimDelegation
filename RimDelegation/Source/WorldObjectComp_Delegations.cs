@@ -1133,6 +1133,22 @@ namespace RimDelegation
                 return;
             }
 
+            // RIM-34(1A)：**待命等指令期间不推进任何收工判定**（也不累计"按天数"的工期）。
+            //
+            // 旧写法先判"按天数"（`EndConditionReached`）再看工时门控，而"待命"（`AwaitingOrder`）
+            // 只让 `IsWorkTime` 变 false ⇒ 玩家还在看"要不要打"的界面，委派可能已经按计划天数
+            // 进了收尾、直接收工，于是交战段 / 搜集战利品段 / 扎营段**全部被跳过**，
+            // 还发一封"委派完成"的信（守军根本没处理）。
+            // 判据只有一处：`Delegation.AwaitingOrder`（与 `IsWorkTime` 同源）。
+            // 把 `startedTickAbs` 一起往后推 ⇒ 待命时间**不算工期**（拍板 1A 而非 1B），
+            // UI 上"已用天数"在待命期间也不会走字。
+            if (d.AwaitingOrder)
+            {
+                d.startedTickAbs += delta;
+                d.ticksResting += delta;
+                return;
+            }
+
             // 结束条件里"按天数"与工时无关，先判一次
             string reached = d.EndConditionReached(GenTicks.TicksAbs);
             if (reached != null)
@@ -1288,6 +1304,16 @@ namespace RimDelegation
                 {
                     line = "（" + effect.GetType().Name + " 执行失败：" + ex.GetType().Name + "）";
                     Log.Error("[RimDelegation] 段 " + phase.defName + " 的 onEnter 效果抛异常：" + ex);
+                    // RIM-34(2A)：**fail-closed**。旧写法只记一行留痕，而本方法最后是
+                    // `return !d.flowAbortReason.NullOrEmpty()` ⇒ 异常时返回 false ⇒ 宿主认为
+                    // "可以继续往下走"：守军从未结算、也没有战报，流程照常进入下一段。
+                    // 同一段代码的注释自己写着「抽象模型兜不住…不装作打赢，也不静默通过 —— 直接中止」，
+                    // 这条路径正好违反它。现在设了理由 ⇒ 宿主下一次判定就 Abort。
+                    if (d.flowAbortReason.NullOrEmpty())
+                    {
+                        d.flowAbortReason = "段「" + phase.LabelCap + "」的结算没能完成（"
+                            + ex.GetType().Name + "），为免弄虚作假，队伍按中断处理。";
+                    }
                 }
                 if (line.NullOrEmpty())
                 {

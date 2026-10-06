@@ -497,6 +497,16 @@ namespace RimDelegation
                     if (p.revealsThreat) revealsIntel = true;
                     if (HasPhaseEffect<DelegationEffectDef_ResolveCombat>(p)) combatAt = j;
                     if (HasPhaseEffect<DelegationEffectDef_GainLoot>(p)) lootAt = j;
+                    // RIM-34(3A)：挂了交战结算的段必须"有战报可公布"。
+                    // 判据是 `deferNoteUntilDone`：战斗在**进入段的那一刻**就结算完了，
+                    // 只有这个开关会让结果等这一段走完再写进信件 / 留痕；缺了它，战报就变成
+                    // 玩家侧那句空话「没有留下结果摘要」（打完了什么也看不到）—— 典型静默失败。
+                    if (HasPhaseEffect<DelegationEffectDef_ResolveCombat>(p) && !p.deferNoteUntilDone)
+                    {
+                        Log.Error("[RimDelegation] DelegationDef「" + def.defName + "」的段「" + p.defName +
+                                  "」挂了交战结算（ResolveCombat），但没有写 <deferNoteUntilDone>true</deferNoteUntilDone>" +
+                                  " —— 战斗结果不会等这一段走完再公布，玩家会看到一份空战报。");
+                    }
                 }
                 if (needsSignal && !revealsIntel)
                 {
