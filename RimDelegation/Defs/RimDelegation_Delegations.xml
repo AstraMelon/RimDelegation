@@ -226,6 +226,69 @@
        ============================================================ -->
 
   <RimDelegation.DelegationPhaseDef>
+    <defName>RimDelegation_Phase_StashEngage</defName>
+    <label>交战</label>
+    <progressLabel>正在交火…</progressLabel>
+    <progressLabelGroup>正在带队交火…</progressLabelGroup>
+    <description>库房门口撞上了看场子的人。交火、压制、清点、包扎 —— 这一段的 1 小时是叙事耗时，胜负在进入这一段时就结算完了。</description>
+    <ambientRerollHours>0.5~1.5</ambientRerollHours>
+    <hours>1</hours>
+    <!-- RIM-28(1A)：搜刮补上与矿点同款的交战段 —— 只有真有守军的那条岔路才有它。 -->
+    <requireThreat>true</requireThreat>
+    <flowCategory>Combat</flowCategory>
+    <!-- 与矿点同款：进这一段前等玩家下令（`engage`） -->
+    <pauseUntilSignal>engage</pauseUntilSignal>
+    <!-- 与矿点同款：结果等这一段走完再公布 -->
+    <deferNoteUntilDone>true</deferNoteUntilDone>
+    <uninterruptible>true</uninterruptible>
+    <squadPosition>藏匿点内部</squadPosition>
+    <onEnter>
+      <li Class="RimDelegation.DelegationEffectDef_ResolveCombat" />
+    </onEnter>
+    <ambientLines>
+      <li>该做的都做了，接下来只是等。</li>
+      <li>{0} 把家伙又检查了一遍，其实刚才已经检查过了。</li>
+      <li>能蹲的地方都被蹲了，谁也没坐着。</li>
+    </ambientLines>
+    <ambientLinesHostile>
+      <li>那段时间没人说得清，库房里的动静起起落落，然后忽然就停了。</li>
+      <li>中间有一阵很难熬，等烟散了，事情也就结束了。</li>
+      <li>事后清点，带来的家伙打光了大半，人都在，算是运气。</li>
+    </ambientLinesHostile>
+    <ambientLinesPacked>
+      <li>驮兽被拴在院墙外，{0} 嘱咐了两遍别让它受惊。</li>
+      <li>驮兽比人先觉出不对，耳朵一直朝一个方向竖着。</li>
+      <li>动手之前最后一眼看的是驮兽 —— 它还站在原地，没跑。</li>
+    </ambientLinesPacked>
+  </RimDelegation.DelegationPhaseDef>
+
+  <RimDelegation.DelegationPhaseDef>
+    <defName>RimDelegation_Phase_StashLoot</defName>
+    <label>搜集战利品</label>
+    <progressLabel>正在搜集战利品…</progressLabel>
+    <progressLabelGroup>正在带队搜集战利品…</progressLabelGroup>
+    <description>把打掉的守军身上还能用的东西清点、拆下来、捆上车。只算留在战场上的那些（跑掉的把东西带走了）。</description>
+    <ambientRerollHours>0.5~1.5</ambientRerollHours>
+    <hours>0.5</hours>
+    <!-- RIM-28(1A)：与矿点的「搜集战利品」段同款，紧接交战之后。 -->
+    <requireThreat>true</requireThreat>
+    <flowCategory>Collect</flowCategory>
+    <deferNoteUntilDone>true</deferNoteUntilDone>
+    <squadPosition>藏匿点内部</squadPosition>
+    <ambientLines>
+      <li>先把家伙收拢到一处，散落的零碎也捡回来，回头好数。</li>
+      <li>能用的都堆在一块：家伙、甲，还有半袋没人认领的干粮。</li>
+      <li>{0} 把还能用的挑出来，剩下的随手推到墙根 —— 搬不走的东西留给后来的人。</li>
+      <li>清点的速度比想象中慢，因为每件东西都得先看一眼还值不值。</li>
+    </ambientLines>
+    <ambientLinesPacked>
+      <li>驮兽被牵进院子，一趟一趟往外驮，比人扛得快多了。</li>
+      <li>{0} 把重的那件绑到驮兽背上，轻的自己拎着走。</li>
+      <li>驮兽对着一堆没见过的零碎闻了闻，最后只肯驮最值的那件。</li>
+    </ambientLinesPacked>
+  </RimDelegation.DelegationPhaseDef>
+
+  <RimDelegation.DelegationPhaseDef>
     <defName>RimDelegation_Phase_StashRecon</defName>
     <label>侦察环境</label>
     <progressLabel>正在侦察环境中…</progressLabel>
@@ -1290,14 +1353,34 @@
     <defaultEndCondition>UntilDepleted</defaultEndCondition>
     <maxDaysLimit>30</maxDaysLimit>
 
-    <!-- 固定流程（§19.27）：前置「侦察1h→移动2h→破门1h」走完才开装车；
-         任何收工条件成立后再走收尾「撤离」才真正收工。搜刮没有敌情岔路 ⇒ （固定 6.0h）。 -->
+    <!-- 固定流程（§19.27）：前置「侦察1h→移动2h→破门1h→交战1h→搜集战利品0.5h」走完才开装车；
+         任何收工条件成立后再走收尾「撤离」才真正收工。
+         RIM-28（用户拍板 1A/2A/3A）：搜刮**不再绕过守军** —— 补上与矿点同款的
+         「交战 → 搜集战利品」两段（都带 `requireThreat` ⇒ 只有真有守军的那条岔路才有；
+         没守军的点这两段在**开工那一刻**被过滤掉，固定合计仍是 3.5h）。
+         3A：抽象模型兜不住的守军（伏击 / 机械集群，占 ItemStash 威胁池的 3/7）走的是
+         与矿点**同一段代码**的 Abort 文案「此地存在无法无地图评估的守军（需进入地图清剿）」；
+         而且因为它排在任何搬运之前 ⇒ `deposit.unitsMined` 仍为 0 ⇒ **不会封禁原版进图路线**
+         （封禁判据是 `unitsMined > 0`，见 `WorldObjectComp_Delegations.ApplyEntryBlock`）
+         ⇒ 玩家永远有路可走。 -->
     <flowPhases>
       <li>RimDelegation_Phase_StashRecon</li>
       <li>RimDelegation_Phase_StashMove</li>
       <li>RimDelegation_Phase_StashBreach</li>
+      <li>RimDelegation_Phase_StashEngage</li>
+      <li>RimDelegation_Phase_StashLoot</li>
       <li>RimDelegation_Phase_StashExtract</li>
     </flowPhases>
+
+    <!-- RIM-28(2A)：搜刮也配作战姿态（与囚犯营救一致）—— 强攻 / 潜入。
+         ⚠️ 默认给**强攻**（不是营救那边的默认潜入）：用户口径是"搜刮不再零风险"，
+         所以默认这条路就是要打；潜入是玩家自己选的赌一把（掷暴露，没被发现就整场不打）。
+         先手判据只有一处：`DelegationApproachDef.FirstStrikePenalty`（RIM-27 归一）。 -->
+    <approaches>
+      <li>RimDelegation_Approach_Assault</li>
+      <li>RimDelegation_Approach_Stealth</li>
+    </approaches>
+    <defaultApproach>RimDelegation_Approach_Assault</defaultApproach>
 
     <!-- S22：主作业（装车）时小队已经在里面了 -->
     <workSquadPosition>藏匿点内部</workSquadPosition>

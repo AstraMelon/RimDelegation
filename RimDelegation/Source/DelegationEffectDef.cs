@@ -372,6 +372,26 @@ namespace RimDelegation
                 return "战斗无法在这套模型里推演，队伍原地待命。";
             }
 
+            // RIM-28(2A)：潜入姿态要**真的掷一次暴露** —— 与囚犯营救同一套语义
+            //（照抄 `RescueUtility.ResolveClearance` 的形态）。没被发现 ⇒ 整场不打；被发现 ⇒ 照常结算，
+            // 且上面算好的 `firstStrike` 已经按唯一判据带上了"守军先手一轮"。
+            // 为什么必须掷：RIM-27 把先手判据定成"要 stealth"，若不掷，潜入就变成
+            // "无条件多吃一轮敌方火力、且没有任何好处"的纯粹陷阱选项。
+            if (d.approach != null && d.approach.stealth)
+            {
+                float exposure = RescueUtility.StealthExposure(site, d.participants, d.approach);
+                bool detected = Rand.Chance(exposure);
+                string verdict = string.Format("潜入判定：暴露概率 {0} → {1}",
+                    exposure.ToStringPercent(), detected ? "**被发现**" : "未被发现");
+                if (!detected)
+                {
+                    setup.DestroyUnusedPawns();   // S31：保留的真 pawn 必须收尾，绝不泄漏
+                    d.flowCombatResult = verdict + "，没惊动守军，这一趟不必开火。";
+                    return verdict + "\n\n没有惊动守军 —— 摸进去、搬完、走人。";
+                }
+                d.flowCombatResult = verdict;
+            }
+
             int seed = Rand.RangeInclusive(1, 999999);
             d.combatSeed = seed;   // RIM-30：战斗种子有独立字段；rolledValue 只留给 worker 的"已搬 kg"语义
 

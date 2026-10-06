@@ -8,7 +8,7 @@
 #     ⚠️ 2026-10-05（RIM-11）起扫描根从 `Defs\` 扩到 **Defs + Patches + Languages** ——
 #        当年英文 Keyed 里那个 `--` 就是被"只扫 Defs"漏掉的（脚本报 4/4 良构，
 #        英文环境下 59 个 key 却整份作废）。
-#  ② **流程数值一致性**（RIM-11）：18 段流程的时长 / 位置 / 条件 / 各池条数，
+#  ② **流程数值一致性**（RIM-11）：20 段流程的时长 / 位置 / 条件 / 各池条数，
 #     加上"每条委派的实际固定流程合计"与"随机事件期望频率"，全部从 Def 复算，
 #     并与**注释里手写的数字**对账 —— P-A2（注释 5.5h vs 实算 7.0h）、
 #     P-A7（注释 0.84 次/天 vs 实算 1.575）就是这么漂移出来的。
@@ -134,8 +134,8 @@ foreach ($m in $phaseMatches) {
     }
 }
 
-if ($phases.Count -ne 18) {
-    Write-WarnMsg ("流程段数量是 " + $phases.Count + " 个，预期 18 个（RIM-10 清点基线）—— 加减段之后请同步更新本脚本与文档。")
+if ($phases.Count -ne 20) {
+    Write-WarnMsg ("流程段数量是 " + $phases.Count + " 个，预期 20 个（RIM-11 基线 18 + RIM-28 新增 StashEngage / StashLoot）—— 加减段之后请同步更新本脚本与文档。")
 }
 
 Write-Section '2. 流程段表（机器复算）'
@@ -324,5 +324,5 @@ if ($script:WarnCount -gt 0) {
     Write-Host ("良构 OK，但有 " + $script:WarnCount + " 条流程数值 WARN —— 见上面清单。") -ForegroundColor Yellow
     exit 2
 }
-Write-Host ("全部通过：" + $xmlFiles.Count + " 个 XML 良构，18 段流程与事件频率零 WARN。") -ForegroundColor Green
+Write-Host ("全部通过：" + $xmlFiles.Count + " 个 XML 良构，20 段流程与事件频率零 WARN。") -ForegroundColor Green
 exit 0
