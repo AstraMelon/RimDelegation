@@ -435,7 +435,7 @@ namespace RimDelegation
         ///
         /// 返回结果同时写进 `d.workerStage` 与 `d.workerAbortReason`，
         /// 并把伤亡**真的施加到参与者身上**（见 <see cref="ApplyCasualties"/>）。
-        /// 战斗用 `Rand.RangeInclusive` 取的种子存进 `d.rolledValue`，
+        /// 战斗用 `Rand.RangeInclusive` 取的种子存进 `d.combatSeed`（RIM-30 起的独立字段），
         /// 保证读档后叙述与数字自洽。
         /// </summary>
         public static void ResolveClearance(Delegation d, Site site, Caravan caravan,
@@ -491,7 +491,7 @@ namespace RimDelegation
             }
 
             int seed = Rand.RangeInclusive(1, 999999);
-            d.rolledValue = seed;   // worker 语义：本次清场的战斗种子
+            d.combatSeed = seed;   // RIM-30：种子不再占用 rolledValue（那格只留给 worker 的"已搬 kg"语义）
 
             CombatResult result;
             try

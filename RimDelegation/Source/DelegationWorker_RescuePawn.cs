@@ -508,9 +508,9 @@ namespace RimDelegation
             float percent = d.cellsMined / Mathf.Max(1f, RescueUtility.TotalWork) * 100f;
             string s = string.Format("救援进度 {0:0.#}/{1:0} 点（{2:0.#}%）· {3}",
                 d.cellsMined, (int)RescueUtility.TotalWork, percent, stage);
-            if (d.rolledValue > 0f && d.workerStage != RescueUtility.StageStealthOk)
+            if (d.combatSeed > 0 && d.workerStage != RescueUtility.StageStealthOk)
             {
-                s += string.Format("\n清场战斗种子 {0:0}", d.rolledValue);
+                s += string.Format("\n清场战斗种子 {0:0}", d.combatSeed);
             }
             return s;
         }

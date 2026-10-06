@@ -164,6 +164,21 @@ namespace RimDelegation
         public string flowCombatResult;
 
         /// <summary>
+        /// RIM-30：本次交战 / 清场用的**战斗种子**（1~999999）。
+        ///
+        /// 为什么必须从 <see cref="rolledValue" /> 里拆出来：那一个字段被两套语义抢用 ——
+        /// 交战段往里写"战斗种子"（6 位数），而继承自搜刮 worker 的一侧把它当"本次已搬走的质量（kg）"
+        /// 累加并显示在进度行 / 完成信 / 中断信里。工作站点自带威胁点数（`WorkSite_Logging`
+        /// `wantsThreatPoints = true`）⇒ 交战段必走 ⇒ 先写种子、之后 worker 再往上累加 kg
+        /// ⇒ 玩家必然看到「累计 532974 kg」这种假数字，而且它会存档。
+        /// 拆开之后：<see cref="rolledValue" /> 只保留 worker 的"已搬 kg"语义，战斗种子一律看这里。
+        ///
+        /// 存档键是**新键** `combatSeed`：旧档里那份种子（原本挤在 `rolledValue` 里）读不回来，
+        /// 只影响"清场战斗种子 N"这行开发叙事显示，无玩法影响（RIM-30 拍板 2B：不写兼容说明）。
+        /// </summary>
+        public int combatSeed;
+
+        /// <summary>
         /// S30：这一趟的**缴获**（打完仗从倒下的守军身上清点出来的东西，见 <see cref="DelegationLootItem" />）。
         ///
         /// 在「交战」段结算那一刻抄好（那时敌人的装备清单还在手上），由**「搜集战利品」段**真正搬上车
@@ -815,6 +830,8 @@ namespace RimDelegation
             // S23：段钩子的中止理由与交战摘要（都是"这一次委派"的事实，必须跟着存档走）
             Scribe_Values.Look(ref flowAbortReason, "roFlowAbortReason");
             Scribe_Values.Look(ref flowCombatResult, "roFlowCombatResult");
+            // RIM-30：战斗种子独立成键（旧档里挤在 rolledValue 的那份不再读回，只影响叙事显示）
+            Scribe_Values.Look(ref combatSeed, "combatSeed", 0);
             Scribe_Collections.Look(ref lootBag, "roLootBag", LookMode.Deep);
             if (lootBag == null)
             {

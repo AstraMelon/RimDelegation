@@ -620,7 +620,7 @@
     <uninterruptible>true</uninterruptible>
     <squadPosition>矿点</squadPosition>
     <!-- ★ S23 段进入钩子：进入这一段的那一刻跑一次模拟战斗（不是每 tick）。
-         与营救的清场同款：种子记进 d.rolledValue，伤亡**真的**施加到参与者身上。
+         与营救的清场同款：种子记进 d.combatSeed（RIM-30 起的独立字段），伤亡**真的**施加到参与者身上。
          打输 ⇒ 设 `d.flowAbortReason` ⇒ 宿主立刻 Abort（用户拍板：交战失败走 Abort）。 -->
     <onEnter>
       <li Class="RimDelegation.DelegationEffectDef_ResolveCombat" />
@@ -920,7 +920,7 @@
     <deferNoteUntilDone>true</deferNoteUntilDone>
     <uninterruptible>true</uninterruptible>
     <squadPosition>营地外围</squadPosition>
-    <!-- 段进入钩子：跑一次无地图战斗（不是每 tick）。种子记进 d.rolledValue，
+    <!-- 段进入钩子：跑一次无地图战斗（不是每 tick）。种子记进 d.combatSeed（RIM-30 起独立字段），
          伤亡真的施加到参与者身上；打输 ⇒ 设 flowAbortReason ⇒ 宿主立刻 Abort。 -->
     <onEnter>
       <li Class="RimDelegation.DelegationEffectDef_ResolveCombat" />

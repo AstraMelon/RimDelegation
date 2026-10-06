@@ -370,7 +370,7 @@ namespace RimDelegation
             }
 
             int seed = Rand.RangeInclusive(1, 999999);
-            d.rolledValue = seed;   // worker 语义：本次交战的战斗种子
+            d.combatSeed = seed;   // RIM-30：战斗种子有独立字段；rolledValue 只留给 worker 的"已搬 kg"语义
 
             CombatResult result;
             try
