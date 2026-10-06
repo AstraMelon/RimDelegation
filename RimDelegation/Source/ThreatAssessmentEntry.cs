@@ -175,14 +175,22 @@ namespace RimDelegation
             return CombatSceneFactory.Build(caravan, site, firstStrikePenalty, excludeFromCombat);
         }
 
-        /// <summary>打开威胁评估面板。</summary>
-        public static void Open(Caravan caravan, Site site, float firstStrikePenalty = 0f)
+        /// <summary>
+        /// 打开威胁评估面板。
+        ///
+        /// RIM-27（拍板 2A）：补上 <paramref name="excludeFromCombat" />。此前这个入口**没有**这一格
+        /// ⇒ 对话框永远看不到委派的「不参战」名单（而主列与交战段都尊重它），三处口径互不相同；
+        /// 营救清场则是反向硬写 `null`。
+        /// </summary>
+        public static void Open(Caravan caravan, Site site, float firstStrikePenalty = 0f,
+            List<Pawn> excludeFromCombat = null)
         {
             if (caravan == null || site == null)
             {
                 return;
             }
-            Find.WindowStack.Add(new Dialog_ThreatAssessment(Build(caravan, site, firstStrikePenalty)));
+            Find.WindowStack.Add(new Dialog_ThreatAssessment(
+                Build(caravan, site, firstStrikePenalty, excludeFromCombat)));
         }
     }
 }

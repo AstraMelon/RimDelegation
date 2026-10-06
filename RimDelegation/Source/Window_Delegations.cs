@@ -1115,8 +1115,10 @@ namespace RimDelegation
                         }
                         if (Widgets.ButtonText(new Rect(x + halfW + 6f, y, halfW, LineH), "查看评估"))
                         {
+                            // RIM-27：折扣走唯一判据（ApproachFirstStrikePenalty 已归一），
+                            // 并把「不参战」名单一起传进去（此前对话框永远看不到它）。
                             ThreatAssessmentEntry.Open(caravan, site,
-                                d.Worker?.ApproachFirstStrikePenalty(d.approach) ?? 0f);
+                                d.Worker?.ApproachFirstStrikePenalty(d.approach) ?? 0f, d.noCombatPawns);
                         }
                     }
                     y += LineH + 2f;

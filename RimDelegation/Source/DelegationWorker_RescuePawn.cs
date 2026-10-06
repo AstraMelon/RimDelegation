@@ -261,14 +261,9 @@ namespace RimDelegation
 
         // ── 作战姿态 ────────────────────────────────────────────────────
 
-        public override float ApproachFirstStrikePenalty(DelegationApproachDef approach)
-        {
-            if (approach == null || !approach.stealth || !approach.guardsGetFirstStrike)
-            {
-                return 0f;
-            }
-            return approach.firstStrikeFactor;
-        }
+        // RIM-27：这里的 ApproachFirstStrikePenalty 覆写已被删掉 —— 判据归一到了
+        // DelegationApproachDef.FirstStrikePenalty（本覆写原本与 RescueUtility 的内联写法重复，
+        // 而主列/交战段又各写了一份漏掉 stealth 的版本）。基类现在直接返回那份唯一判据。
 
         public override string ApproachForecast(Site site, List<Pawn> pawns, DelegationApproachDef approach)
         {

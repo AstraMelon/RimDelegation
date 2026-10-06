@@ -475,13 +475,12 @@ namespace RimDelegation
             }
 
             // ── 强攻（或潜入失败转强攻）──
-            float firstStrike = 0f;
-            if (stealthAttempt && approach.guardsGetFirstStrike)
-            {
-                firstStrike = approach.firstStrikeFactor;
-            }
+            // RIM-27：先手折扣走**唯一**判据（DelegationApproachDef.FirstStrikePenalty）；
+            // 「不参战」名单（拍板 2A）也必须真的生效 —— 旧写法这里硬写 `null`，
+            // 玩家勾掉的"不参战"对营救清场完全无效（与主列/交战段口径不同源）。
+            float firstStrike = DelegationApproachDef.FirstStrikePenalty(approach);
 
-            CombatSetup setup = CombatSceneFactory.Build(caravan, site, firstStrike, null, keepPawns: true);
+            CombatSetup setup = CombatSceneFactory.Build(caravan, site, firstStrike, d.noCombatPawns, keepPawns: true);
             if (!setup.CanAssess)
             {
                 d.workerStage = StageAssaultLost;

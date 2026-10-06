@@ -203,9 +203,10 @@ namespace RimDelegation
                 return;
             }
 
-            // 与营救/交战段同一条口径：姿态的"守军先手一轮"必须作用在快照上，
-            // 否则这里的成算与真正打起来那一场会差一轮火力（违背"预告即契约" §19.12）。
-            float penalty = approach != null && approach.guardsGetFirstStrike ? approach.firstStrikeFactor : 0f;
+            // RIM-27 归一：与营救清场 / 交战段 / 对话框走**同一个纯函数**。
+            // 旧写法漏了 `stealth` 条件 ⇒ 囚犯营救选「强攻」时这里按 1.0 算，而真结算按 0 算，
+            // 主列比真打少吃一轮敌方火力（违背"预告即契约" §19.12）。
+            float penalty = DelegationApproachDef.FirstStrikePenalty(approach);
 
             CombatSetup setup;
             try

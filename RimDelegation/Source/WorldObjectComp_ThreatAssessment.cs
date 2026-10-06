@@ -57,7 +57,12 @@ namespace RimDelegation
 
         private void OpenAssessment(Caravan caravan)
         {
-            ThreatAssessmentEntry.Open(caravan, Site);
+            // RIM-27：车队侧入口此前连 penalty 都不传（默认 0f），也看不到「不参战」名单
+            // ⇒ 这里看到的成算与主列 / 真结算互不相同。现在从该地点的委派宿主取当前这次委派，
+            // 把它的姿态折扣与「不参战」名单一起传进去（没有在跑委派时两者天然为 0 / null）。
+            Delegation active = Site?.GetComponent<WorldObjectComp_Delegations>()?.active;
+            float penalty = active?.Worker?.ApproachFirstStrikePenalty(active.approach) ?? 0f;
+            ThreatAssessmentEntry.Open(caravan, Site, penalty, active?.noCombatPawns);
         }
     }
 }

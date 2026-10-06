@@ -52,6 +52,33 @@ namespace RimDelegation
         /// <summary>先手一轮的折扣系数（1 = 完整体现敌方一回合输出）。</summary>
         public float firstStrikeFactor = 1f;
 
+        /// <summary>
+        /// **唯一的**「守军先手一轮」判据（RIM-27 归一，拍板 1A）。判据 = 这次**确实是潜入企图**
+        /// （<see cref="stealth" />）且守军有先手（<see cref="guardsGetFirstStrike" />）。
+        ///
+        /// 语义依据就是 <see cref="guardsGetFirstStrike" /> 自己的注释：「潜入失败后，守军先手一轮」
+        /// —— 那是**被发现的代价**，不是"凡是打就有"。
+        ///
+        /// 为什么要收成一个纯函数：此前同一条规则有 4 份实现，其中 2 份漏了 `stealth` 条件
+        /// ⇒ 囚犯营救选「强攻」时玩家会看到**三个不同的答案**（主列成算按有先手算 = 1.0、
+        /// 同一面板点开的「查看评估」按 0 算、真结算 0）。玩家照面板决定打不打，正是
+        /// "预告即契约"（§19.12）要防的事。
+        ///
+        /// 现在全仓库只有这一份判据，4 个调用点都走它：
+        ///   · <c>DelegationThreatSummary.Refresh</c>（主列成算 / 侧栏摘要）
+        ///   · <c>DelegationEffectDef_ResolveCombat.Apply</c>（流程「交战」段真结算）
+        ///   · <c>DelegationWorker.ApproachFirstStrikePenalty</c>（对话框底部成算，4 处 UI 都调它）
+        ///   · <c>RescueUtility.ResolveClearance</c>（营救清场真结算）
+        /// </summary>
+        public static float FirstStrikePenalty(DelegationApproachDef approach)
+        {
+            if (approach == null || !approach.stealth || !approach.guardsGetFirstStrike)
+            {
+                return 0f;
+            }
+            return approach.firstStrikeFactor;
+        }
+
         public override IEnumerable<string> ConfigErrors()
         {
             foreach (string e in base.ConfigErrors())

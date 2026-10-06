@@ -354,11 +354,12 @@ namespace RimDelegation
                 return null;
             }
 
-            float firstStrike = 0f;
-            if (useApproachFirstStrike && d.approach != null && d.approach.guardsGetFirstStrike)
-            {
-                firstStrike = d.approach.firstStrikeFactor;
-            }
+            // RIM-27 归一：判据只有 DelegationApproachDef.FirstStrikePenalty 一份
+            // （旧写法漏了 `stealth` 条件 ⇒ 与主列/对话框/营救结算三处互不相同）。
+            // `useApproachFirstStrike` 仍是 Def 级的功能开关（默认 true），不是第二份判据。
+            float firstStrike = useApproachFirstStrike
+                ? DelegationApproachDef.FirstStrikePenalty(d.approach)
+                : 0f;
 
             CombatSetup setup = CombatSceneFactory.Build(d.caravan, site, firstStrike, d.noCombatPawns, keepPawns: true);
             if (!setup.CanAssess)

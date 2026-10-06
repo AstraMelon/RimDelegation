@@ -132,10 +132,13 @@ namespace RimDelegation
         /// 用途：潜入失败会转强攻且**守军先手一轮**，这个折扣必须同时作用在
         /// 结算用的 <c>CombatScene</c> 与委派对话框里那个「威胁评估」按钮上，
         /// 否则"预告"与"实际"会差一轮火力（违背"预告即契约"）。
+        ///
+        /// RIM-27 归一后：默认实现直接走 <see cref="DelegationApproachDef.FirstStrikePenalty" />，
+        /// 全仓库只剩**那一份**判据（此前基类恒返回 0，等于第 5 个"口径"）。
         /// </summary>
         public virtual float ApproachFirstStrikePenalty(DelegationApproachDef approach)
         {
-            return 0f;
+            return DelegationApproachDef.FirstStrikePenalty(approach);
         }
 
         /// <summary>

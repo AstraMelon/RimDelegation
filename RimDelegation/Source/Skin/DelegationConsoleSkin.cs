@@ -2324,8 +2324,9 @@ namespace RimDelegationRadiusUI
                         if (UIKit.Button(new Rect(c.view.x + CBtnW + 8f, c.y, CBtnW, 24f), "查看评估",
                                 ButtonStyle.Solid, true, "打开完整的威胁评估面板（编队 / 预告 / 单场推演与日志）"))
                         {
+                            // RIM-27：折扣归一 + 把「不参战」名单一起传进去
                             ThreatAssessmentEntry.Open(d.caravan, site,
-                                d.Worker?.ApproachFirstStrikePenalty(d.approach) ?? 0f);
+                                d.Worker?.ApproachFirstStrikePenalty(d.approach) ?? 0f, d.noCombatPawns);
                         }
                     }
                     c.y += 28f;
