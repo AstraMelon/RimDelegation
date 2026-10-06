@@ -533,6 +533,9 @@ namespace RimDelegation
             report?.AppendLine("强攻结算（种子 " + seed + "）：" + result.Summary());
             ApplyCasualties(result, d.participants, casualtiesArePermanent, report);
 
+            // RIM-33(1A)：营救侧的清场同样把胜负落到**地点**上（与流程交战段同一条口径）
+            DelegationUtility.MarkThreatOutcome(site, result.ThreatCleared);
+
             if (result.ThreatCleared)
             {
                 d.workerStage = StageAssaultWon;

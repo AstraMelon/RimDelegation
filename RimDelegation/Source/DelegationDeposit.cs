@@ -47,6 +47,20 @@ namespace RimDelegation
         /// </summary>
         public bool workerRolledContents;
 
+        /// <summary>
+        /// RIM-33(1A)：**威胁已解除** —— 这个点的守军已经被打掉了（打赢 / 惨胜 ⇒ `true`；
+        /// 撤退 / 失利 ⇒ 保持 `false`）。与"0 存量闸门"同款：它**跟着事件点持久化**，
+        /// 于是"同一批守军反复打、反复缴获"这条路被堵死（编队是确定性的，同一种子同一批人同一批装备）。
+        /// 读它的地方：`ThreatAssessmentEntry.HasThreat`（于是流程的 `requireThreat` 岔路自动走"无守军"那条）。
+        /// </summary>
+        public bool threatCleared;
+
+        /// <summary>
+        /// RIM-33(3A)：上一次交战**没能**打掉守军（撤退 / 失利）。
+        /// 只用来给玩家一行可见提示（「此处守军未受实质损失」），免得他把"没反应"误当成"打过了"。
+        /// </summary>
+        public bool lastFightLost;
+
         public int UnitsRemaining => Mathf.Max(0, totalUnits - Mathf.FloorToInt(unitsMined));
 
         public bool IsDepleted => totalUnits > 0 && unitsMined >= totalUnits - 0.0001f;
@@ -64,6 +78,9 @@ namespace RimDelegation
             Scribe_Values.Look(ref unitsDelivered, "unitsDelivered", 0);
             Scribe_Values.Look(ref timesDelegated, "timesDelegated", 0);
             Scribe_Values.Look(ref workerRolledContents, "workerRolledContents", false);
+            // RIM-33：威胁闸门（跟着**地点**走，跨多次委派）
+            Scribe_Values.Look(ref threatCleared, "threatCleared", false);
+            Scribe_Values.Look(ref lastFightLost, "lastFightLost", false);
         }
     }
 }

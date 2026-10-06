@@ -40,10 +40,37 @@ namespace RimDelegation
             {
                 if (IsThreatPart(site.parts[i]))
                 {
+                    // RIM-33(1A)：守军已经被打掉的点**不再算威胁**。
+                    // 这是唯一的闸门位置 —— 流程的 requireThreat 岔路、敌情旁白池、
+                    // 作战任务段、成算缓存、车队侧 gizmo 全都读这一个方法（grep 复核过），
+                    // 所以"解除后自动走无守军岔路、也不再有编队与成算"是**由它推出来的**，
+                    // 不需要在别处各写一遍。
+                    if (IsThreatCleared(site))
+                    {
+                        return false;
+                    }
                     return true;
                 }
             }
             return false;
+        }
+
+        /// <summary>
+        /// RIM-33(1A)：这一点的**威胁是否已被解除**（打过一次且打赢/惨胜）。
+        /// 判据存地点上（`DelegationDeposit.threatCleared`，随存档、跨多次委派）——
+        /// 与"0 存量闸门"同一套思路：同一批守军不许反复刷（编队是确定性的，同种子同一批人同一批装备）。
+        /// </summary>
+        public static bool IsThreatCleared(Site site)
+        {
+            return site?.GetComponent<WorldObjectComp_Delegations>()?.deposit?.threatCleared ?? false;
+        }
+
+        /// <summary>
+        /// RIM-33(3A)：上一次交战**没能**打掉守军（撤退 / 失利）⇒ 值得给玩家一行可见提示。
+        /// </summary>
+        public static bool LastFightLost(Site site)
+        {
+            return site?.GetComponent<WorldObjectComp_Delegations>()?.deposit?.lastFightLost ?? false;
         }
 
         public static int ThreatPartCount(Site site)
@@ -158,6 +185,11 @@ namespace RimDelegation
             if (HasHiddenThreat(site))
             {
                 sb.Append(" · 含未探明的威胁");
+            }
+            // RIM-33(3A)：上一次没打掉 ⇒ 明说，免得玩家把"没反应"当成"打过了"
+            if (LastFightLost(site))
+            {
+                sb.Append(" · 此处守军未受实质损失（可以再打一次）");
             }
             return sb.ToString();
         }

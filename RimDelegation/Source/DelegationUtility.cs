@@ -542,6 +542,28 @@ namespace RimDelegation
             }
         }
 
+        /// <summary>
+        /// RIM-33(1A/3A)：把一次交战的**胜负落到地点上**（威胁是否已解除 / 上一次是否失利）。
+        ///
+        /// 为什么必须落到地点：编队是**确定性**的（同一种子同一批人同一批装备），
+        /// 而"存量有 0 存量闸门、战斗没有" —— 不记这一笔就能反复打、反复缴获、反复收押。
+        /// 语义（拍板 1A）：打赢 / 惨胜 ⇒ 解除；撤退 / 失败 ⇒ **不解除**（守军还在，下次重打照常算数）。
+        /// </summary>
+        public static void MarkThreatOutcome(Site site, bool cleared)
+        {
+            WorldObjectComp_Delegations comp = site?.GetComponent<WorldObjectComp_Delegations>();
+            if (comp == null)
+            {
+                return;
+            }
+            if (comp.deposit == null)
+            {
+                comp.deposit = new DelegationDeposit();
+            }
+            comp.deposit.threatCleared = comp.deposit.threatCleared || cleared;
+            comp.deposit.lastFightLost = !cleared;
+        }
+
         // ================================================================ RIM-29：载重闸门（全仓库唯一一份）
 
         /// <summary>

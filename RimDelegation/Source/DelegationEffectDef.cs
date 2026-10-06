@@ -446,6 +446,8 @@ namespace RimDelegation
             RescueUtility.ApplyCasualties(result, d.participants, d.def?.casualtiesArePermanent ?? true, casualties);
 
             d.flowCombatResult = result.Summary();
+            // RIM-33(1A)：把胜负落到**地点**上（打赢 ⇒ 威胁已解除；失利 ⇒ 守军未受实质损失）
+            DelegationUtility.MarkThreatOutcome(site, result.ThreatCleared);
             if (result.ThreatCleared)
             {
                 return Format("交战结束（{0}）{1}", result.Summary(),
