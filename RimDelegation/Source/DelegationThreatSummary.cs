@@ -377,7 +377,7 @@ namespace RimDelegation
                 {
                     entries.Add(new RosterEntry
                     {
-                        icon = u.IconDef,
+                        icon = IconDefByName(u.IconDefName),
                         name = u.Name,
                         count = 1,
                         unit = u,
@@ -385,6 +385,19 @@ namespace RimDelegation
                 }
             }
             return entries;
+        }
+
+        /// <summary>
+        /// RIM-35：把核心快照里的 `IconDefName` 还原成真 `ThingDef`（`ThingDef.uiIcon` 用来画编队行图标）。
+        ///
+        /// 核心（`Source/Combat/Core`）不许出现 `Verse` 类型，否则 `Prototype` / `CombatLab` 两个离线工程
+        /// 直接 CS0246（它们**刻意不引用 RimWorld / Unity**）—— 所以"名字 → Def"这一步只能在游戏侧做。
+        /// 用 `GetNamedSilentFail`：拿不到就给 null，两端画法都已有 `icon != null` 判空。
+        /// </summary>
+        private static ThingDef IconDefByName(string defName)
+        {
+            if (defName.NullOrEmpty()) return null;
+            return DefDatabase<ThingDef>.GetNamedSilentFail(defName);
         }
 
         /// <summary>合并判据：名字 + 全部关键数值都要一致，免得把两个恰好同名的不同单位算成一个。</summary>

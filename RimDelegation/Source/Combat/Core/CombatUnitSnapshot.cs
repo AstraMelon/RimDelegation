@@ -1,5 +1,4 @@
 using System;
-using Verse;
 
 namespace RimDelegation.Combat
 {
@@ -66,12 +65,18 @@ namespace RimDelegation.Combat
         public string Name = "?";
 
         /// <summary>
-        /// 画单位图标用的 Def（S25）：编队列表靠它显示"这是人 / 动物 / 机械 / 炮塔"。
+        /// 画单位图标用的 Def **名字**（S25 引入，RIM-35 由 `ThingDef` 改为 `string`）：编队列表靠它显示"这是人 / 动物 / 机械 / 炮塔"。
         ///
-        /// 为什么只留 Def 不留 Pawn：敌方 pawn 生成完**立刻被销毁**（见 `ThreatRosterFactory`），
-        /// 存 Pawn 引用就是存一个死对象（还会把 pawn 写进存档）。`ThingDef.uiIcon` 足够表达类别。
+        /// 为什么只留 Def 名字不留 Pawn：敌方 pawn 生成完**立刻被销毁**（见 `ThreatRosterFactory`），
+        /// 存 Pawn 引用就是存一个死对象（还会把 pawn 写进存档）；`ThingDef.uiIcon` 足够表达类别。
+        ///
+        /// 为什么是 `string` 而不是 `ThingDef`：本文件与 `Source/Combat/Core` 下其余文件同属**纯计算核心**，
+        /// 被 `Prototype` / `CombatLab` 两个离线工程用 `..\Source\Combat\Core\*.cs` 通配编进来，而那两个工程
+        /// **刻意不引用 RimWorld / Unity**。核心一旦出现任何 `Verse` 类型，两个工程必然 CS0246（RIM-35 的现象）。
+        /// 游戏侧适配层（`CombatSnapshotFactory`）只写 defName，取值侧（`DelegationThreatSummary`）用
+        /// `DefDatabase&lt;ThingDef&gt;.GetNamedSilentFail` 还原 —— 核心因此**零游戏依赖**。
         /// </summary>
-        public ThingDef IconDef;
+        public string IconDefName;
 
         /// <summary>true = 我方（车队成员），false = 敌方。</summary>
         public bool IsMine;

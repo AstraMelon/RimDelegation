@@ -60,7 +60,7 @@ namespace RimDelegation.Combat
             CombatUnitSnapshot snap = new CombatUnitSnapshot
             {
                 Name = pawn.LabelShortCap,
-                IconDef = pawn.def,              // S25：人族 / 动物 / 机械族各自的 uiIcon
+                IconDefName = pawn.def == null ? null : pawn.def.defName,   // S25/RIM-35：人族 / 动物 / 机械族各自的 uiIcon（核心只收 defName）
                 IsMine = mine,
                 MaxHealth = Math.Max(5f, healthScale * CombatTuning.HealthPoolPerScale * healthFraction),
                 AccuracyNear = near,
@@ -180,7 +180,7 @@ namespace RimDelegation.Combat
                 CombatUnitSnapshot snap = new CombatUnitSnapshot
                 {
                     Name = name,
-                    IconDef = turretDef,         // S25：炮塔自己的 uiIcon
+                    IconDefName = turretDef == null ? null : turretDef.defName,   // S25/RIM-35：炮塔自己的 uiIcon（核心只收 defName）
                     IsMine = false,
                     MaxHealth = maxHp,
                     AccuracyNear = near,
