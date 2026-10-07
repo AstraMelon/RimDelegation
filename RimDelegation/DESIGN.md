@@ -1737,6 +1737,12 @@ for (int i = 0; i < parts.Count; i++) {
 
 ⇒ `ForbidAbstract` 的威胁走 §17 的清剿闸门（灰显 + 「前往清剿」）。**§17 与 §18 拼起来才是完整设计。**
 
+> **落地现状（S39，2026-10-07，以 `ThreatRosterFactory.SupportOf` 为准）**：
+> `Ambush*` 已按本表落地为 `Abstract`（本表的原始判定被 §19.x 第 7 项推翻过一轮、S39 又改回来，见 §19.112.1）；
+> `Turrets` 也已从本表的 `ForbidAbstract` 改成可抽象（RIM-23 之后的口径：`turretsCount` 是确定性整数）；
+> 现在**只剩** `MechCluster` / `MechClusterForceNoConditionCauser` 是 `ForbidAbstract`。
+> 上面的 Def 化（`DelegationThreatPolicies.xml`）**始终没有实装** —— 分流表仍在代码里（`SupportOf`）。
+
 新增 Def 文件：`Defs/RimDelegation_ThreatPolicies.xml`。
 
 ### 18.4 结算引擎：分段掷骰 `[建议]`
@@ -2244,7 +2250,7 @@ result = Simulate(delegation.roCombatSeed, scene)
 | 4 | **未 spawn 的敌方 pawn 会不会被 scribe 进存档、写多大** | 存档膨胀 / 读档时 pawn 状态不一致 | 战斗期间禁止存档？或改用"只取数值不留对象"的两段式（见下） |
 | 5 | `GeneratePawnKindsExample` 与真实 `GeneratePawns` 的构成是否逐人一致 | 预告里的"3 名海盗 · 2 名重装"与实际不符 | 预告直接用 `GeneratePawns` 的结果（即 §19.7 的方案），只在极少场合退回 example |
 | 6 | `GeneratePawns` 传 `inhabitants: true` 而无 `map` 是否会在某些 group kind 上摸 `Map` | 生成失败 / 报错 | 按 group kind 分支：失败者退回 `GeneratePawnKindsExample` + 系数 |
-| 7 | `AmbushEdge` / `AmbushHidden` 的伏击编制（`GenStep_Ambush_Edge/Hidden` 的触发与生成） | 伏击类无法进入抽象引擎 | 把 `Ambush*` 移入 `ForbidAbstract`（回落到 §17 闸门） |
+| 7 | `AmbushEdge` / `AmbushHidden` 的伏击编制（`GenStep_Ambush_Edge/Hidden` 的触发与生成） | 伏击类无法进入抽象引擎 | ~~把 `Ambush*` 移入 `ForbidAbstract`（回落到 §17 闸门）~~ **已被 S39 取代**：类型确实不可读（`Rand.RangeInclusive(0,2)` 在地图生成那一刻掷、不存档），但"不可读"换来的是玩家**白跑一趟**（走到「交战」段才 Abort）⇒ S39 改成**本趟按站点种子判定类型**，掷法与编制逐字照抄原版。见 **§19.112** |
 
 其余未决：分流表 `abstractPenalty` 的取值标定（回归为"仅空间优势损失"后需重测）、`PickOurTarget` 默认策略的体感、脱离接触轮系数、快进期间 vanilla 事件的连锁影响、侦察阶段的耗时与伏击概率。
 
@@ -3324,12 +3330,16 @@ mod DLL：66048 → **112128 字节**。
 |---|---|
 | `Outpost` | `GeneratePawns(groupKind=Settlement, faction=site.Faction, seed=parms.randomValue, inhabitants:true)` |
 | `SleepingMechanoids` | `GeneratePawns(groupKind=Combat, faction=Faction.OfMechanoids, seed=SleepingMechanoidsSitePartUtility.GetPawnGroupMakerSeed(parms))` |
-| `Manhunters` | `parms.animalKind` × `AggressiveAnimalIncidentUtility.GetAnimalsCount(kind, points)` |
-| `Turrets` / `MechCluster` / `Ambush*` | **进 `Unresolved`**，UI 提示"需进入地图清剿"（即 §18.3 的 `ForbidAbstract`） |
+| `Manhunters` | `parms.animalKind` × `AggressiveAnimalIncidentUtility.GetAnimalsCount(kind, points)`；`animalKind` 缺失时按 S39 起补 `ManhunterPackGenStepUtility.TryGetAnimalsKind(points, tile)` 兜底（旧写法直接进 `Unresolved`） |
+| `Turrets` | 见 RIM-23：`turretsCount` 座迷你炮塔 + **1 名边缘守卫**（`guardsCountRange = (1,1)`） |
+| `Ambush*` | **S39 起可抽象**：类型由本趟按 `parms.randomValue` 判定（原版在地图生成那一刻 `Rand.RangeInclusive(0,2)`，不存档）；`MechCluster*` 仍是 `ForbidAbstract` |
 
-**生成 → 折算快照 → 立刻 `Destroy()`**。因为只需要数值，销毁掉就彻底绕开了
+**生成 → 折算快照 → 立刻 `Destroy()`**（`keepPawns = false` 时）。因为只需要数值，销毁掉就彻底绕开了
 "未 spawn 的 pawn 被写进存档"这个 §19.14 第 4 项的高风险未决 —— 编制只剩纯数据。
-`[未决]` 将来要做"战场缴获"（读敌人装备当战利品）时，才需要保留真 pawn 并处理生命周期。
+（`keepPawns = true` 的"真结算"两条路见 §19.112 与战斗结算条目。）
+⚠️ S39 起 `Build` 的 `default:` 是 **fail-closed**（进 `Unresolved` + `Log.ErrorOnce`），
+不再是旧的 `GenerateManhunters` 兜底 —— "`SupportOf` 说能抽象、`Build` 却没有分支"这件事
+由 `ModBoot.CheckThreatGenerators` 在启动时用 `ThreatRosterFactory.HandledThreatDefNames` 点名。
 
 #### 19.23.4 立场与天气
 
@@ -6071,4 +6081,109 @@ id 不会。老存档 `ambientPickId == 0` ⇒ 走"确定性哈希"兜底（用�
    而不是"读世界某点的天气"。
 4. **设置页文案仍是 C# 里的中文字面量**（`RimDelegationMod.cs`，全文件 1400+ 个 CJK 字符），
    本轮新增的两处也照同一风格写。要可翻译必须"加 Keyed 键 + 把字面量换成 `.Translate()`"两件事一起做。
+
+---
+
+### 19.112 S39 · 三个 bug 修复：伏击可抽象（RIM-36）· 图钉与折叠开关重叠（RIM-6 回归）· 三段标题发虚（RIM-7）`[实现]`
+
+用户原话（2026-10-07，一条消息三个 bug）：
+
+> `/rimsearcher RimDelegation bugfix: 报告此地存在无法抽象评估的威胁`
+> `bug2: PIN按钮和折叠收起按钮重叠了`
+> `bug3: 作战任务/收集任务/远行队信息 字体模糊`
+
+#### 19.112.1 bug1 = 伏击件把整趟委派拖进"白跑一趟" `[验证]`
+
+**现场（存档实证，不是推断）**：用户截图里那个 `金矿块（24023,0）` 在 `XX.rws` 里的部件是
+
+```xml
+<def>PreciousLump</def>                      ← 主件（wantsThreatPoints = false）
+<def>AmbushHidden</def><threatPoints>28</threatPoints><hidden>True</hidden>   ← 威胁件
+<def>PossibleUnknownThreatMarker</def>       ← 原版自动追加的"可能未知威胁"标记（threatPoints 恒 0）
+```
+
+⇒ 台面上那句「此地存在无法抽象评估的威胁（需进入地图清剿）」来自 `AmbushHidden`
+（旧 `SupportOf` 判 `ForbidAbstract`）。后果不是"提示一句"，而是**走到「交战」段就 Abort**：
+玩家派人跑了半天、在待命界面还得先点「进行交战」才知道这一仗根本打不了。
+
+**为什么以前判 ForbidAbstract（反编译真值，仍然成立）**：
+`GenStep_Ambush.MakeAmbushSignalAction`（`02002058:T`）——
+`points = parms.sitePart.parms.threatPoints`（存档可读），但类型是
+`int num = Rand.RangeInclusive(0, 2);`（`0→Manhunters` / `1→Mechanoids`（需
+`CanGenerateAnyNormalGroup`）/ `else→Normal`），**在地图生成那一刻用全局 `Rand` 掷**，
+只写进地图上 spawn 的 `SignalAction_Ambush` Thing；`SitePartParams` 里没有任何 ambush 字段。
+
+**S39 的口径（有意偏离原版"把选择权留到进图"）**：类型改由**本趟**按
+`part.parms.randomValue`（建点那一刻 `Rand.Int` 掷定、随存档）+ `Rand.PushState` 判定，
+掷法、分支、编制、点数**逐字照抄**：
+· `Manhunters` → `TryFindAggressiveAnimalKind(points, tile)`（失败退 `PlanetTile.Invalid`）
+  → `AggressiveAnimalIncidentUtility.GenerateAnimals(kind, tile, points)`；
+· `Mechanoids` → `Faction.OfMechanoids`、`groupKind = Combat`、points 原样；
+· `Normal` → `site.Faction`（敌对时）否则 `Find.FactionManager.RandomEnemyFaction(false,false,false)`，
+  points = `Mathf.Max(points, faction.def.MinPointsToGeneratePawnGroup(Combat))`。
+好处：① 预告与结算必然是同一份编队（§19.12「预告即契约」的输入同源前提）；
+② 从 UI 反复评估**不吃**世界随机数流；③ 不再中途 Abort。
+代价（必须在玩家可见处写明，见 `Notes`）：玩家若选择亲自进图清剿，届时原版会**另外掷一次**类型。
+**未做**：不额外计"被偷袭"的折扣（守军的 `HasTerrainAdvantage` 已含这一层）——留给用户拍板。
+
+同批（同一处代码、同一类缺陷）：
+· `Manhunters` 独立件在 `animalKind` 缺失时改为按 `ManhunterPackGenStepUtility.TryGetAnimalsKind(points, tile)`
+  **兜底重掷**（旧写法直接进 `Unresolved` ⇒ 又是"一个件拖垮整趟"）；这条查表也包了种子（它内部走全局 `Rand`）。
+· 野兽生成统一走 `GenerateAnimalPack`（**生成那一步也包在 `PushState` 里**；旧写法只包了快照折算那一段），
+  并照原版把 `tile` 传给 `PawnGenerationRequest`（旧写法 `GeneratePawn(kind, null)` 丢了 tile）。
+· `MechClusterForceNoConditionCauser` 从 `Unsupported` 改判 `ForbidAbstract`（能力与 `MechCluster` 相同，
+  RIM-22 §1.3-⑤：同一能力应有同一判定，文案才不会对玩家说"尚未支持"）。
+· `Build` 的 `default:` 从 `GenerateManhunters` 改成 **fail-closed**（`Unresolved` + `Log.ErrorOnce`）+
+  新增启动自检 `ModBoot.CheckThreatGenerators`（`HandledThreatDefNames` = `Build` 那半边表的声明）。
+
+**文案去重**：`CombatSetup.BlockReason()` 的 `Unresolved` 分支以前是一句通用话，而它被三处调用点
+各加一层同义前缀 ⇒ 中止信里是「此地存在无法无地图评估的守军（需进入地图清剿）：此地存在无法抽象评估的威胁（需进入地图清剿）」。
+现在 `BlockReason()` 自带**具体件名**，两处调用点（交战段 / 营救清场）不再加前缀。
+
+**唯一来源自检绑定**：`SupportOf`（判"能不能抽象"）与 `Build` 的 `switch`（真有生成器）是两张表，
+`HandledThreatDefNames` + `CheckThreatGenerators` 把两张表绑在一起（加一条 `SupportOf` 必须同时加一条 case）。
+
+#### 19.112.2 bug2 = RIM-6 的回归：两颗按钮矩形逐像素重合 `[验证]`
+
+`DrawColumnToggle`（`Source/Skin/DelegationConsoleSkin.cs`）里旧写法是"边画边改 x"：
+
+```csharp
+float btnX = col.xMax - BtnGap - ColBtnW;
+if (roomForPin) { 图钉画在 (btnX - PinBtnW - BtnGap); btnX -= PinBtnW + BtnGap; }   // ← 画完才改
+DrawCollapseToggle(new Rect(btnX, …));                                              // ← 于是与图钉同 x
+```
+
+⇒ 18×18 的折叠开关圆角底压在 22×22 的图钉上（图钉先画）。改成"先算位置、再画"：
+折叠开关贴列右边（`col.xMax - BtnGap - ColBtnW`），图钉由它往左退一格（`- BtnGap - PinBtnW`），
+中途不再改写任何 x。顺手把 RIM-6 注释里承诺、代码里却没做的"自绘几何字形"补齐
+（`Widgets.DrawBoxSolid` 两根 2px 线；`＋` = 横 + 竖）⇒ 四条列头的开关零字体依赖。
+
+#### 19.112.3 bug3 = RIM-7：同一句标题每帧被画两遍 `[验证]`
+
+`SectionCollapsible` 在 `top + 2` 用**白 `Ink`** 画一遍标题，`SectionChrome` 又在 `card.y + 4`
+（= `top + 4`）用**灰 `InkMid`** 画同一句话并铺卡 ⇒ 纵向差 2px、颜色还不同 = 肉眼"发虚/重影"。
+旁证：右栏 `概览 / 位置 / 导航` 卡标题用的是**同一字阶 + 同一 bold**，但它们只画一遍，一直是锐利的。
+修法（RIM-7 的 `A` 档，根因级）：**标题的唯一来源改成 `SectionCollapsible`**
+（它永在、第一帧就有、也是唯一知道展开/收起状态的地方），`SectionChrome` 退化为**只铺底框**；
+收起态同样只画一次（先补卡、后画字）。颜色统一用 `Palette.Flat.Ink`（S25 用户要求"Title 更加凸显"）。
+
+#### S39 验收步骤
+
+① `build.ps1` 退出码 **0**（编译 0 warning / 0 error + 离线 Prototype 自测 41/41）；
+② `tools\Check-DefsXml.ps1` 退出码 **0**（本轮没动 XML，属于回归检查）；
+③ 进游戏看启动横幅：**没有** `CheckThreatGenerators` 的 Warning；
+④ 找一个**有伏击**的矿点（存档里带 `AmbushHidden`/`AmbushEdge`，约 1/7 的扫描矿点）：
+   作战任务段应给出**具体编队**（野兽 / 机械族 / 某派系）而不是「此地存在无法抽象评估的威胁」，
+   点「进行交战」能真的打完并写出战报；
+⑤ 四个列头：图钉与 `－` **左右并排、互不重叠**，两颗都能点（tooltip 各自正确）；
+⑥ 三段的 `作战任务 / 收集任务 / 远行队信息` 与右栏 `概览` 的锐利度肉眼一致；折叠/展开后仍不重影。
+
+#### 待用户拍板（编号）
+
+1. **伏击要不要"被偷袭"折扣**：`1A`（推荐）不加（现状：守军的地形优势已含这一层）／
+   `1B` 给它一次"守军先手一轮"（复用 `ApplyFirstStrikePenalty` 的同一套折算，我方开局耐久打折）。
+2. **伏击类型该不该固定给玩家看**：`2A`（推荐）现在这样（写明"本趟判定为 X"）／`2B` 只写"伏兵种类未定"，
+   编队仍照常算但不点明类型。
+3. `AmbushEdge` 与 `AmbushHidden` 要不要给不同手感：`3A`（推荐）同口径（都按遭遇战）／
+   `3B` `Hidden` 加折扣（它是"踩到即贴身刷人"，`Edge` 是"从地图边缘冲过来"）。
 

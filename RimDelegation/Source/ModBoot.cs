@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using HarmonyLib;
+using RimDelegation.Combat;
 using RimDelegationRadiusUI;
 using RimWorld;
 using Verse;
@@ -79,7 +80,48 @@ namespace RimDelegation
             CheckS25FlowGates();
             CheckMainButton();
             CheckTargetTags();
+            CheckThreatGenerators();
             LogDelegationDefs();
+        }
+
+        /// <summary>
+        /// 启动自检（2026-10-07，随"伏击改为可抽象"一起加）：**允诺可评估、却没有生成器**的威胁件。
+        ///
+        /// 症状：玩家在矿点/物资点上看到"委派：开采/搜刮"，队伍跑到地方、走到「交战」段才被
+        /// `d.flowAbortReason` 拦下（文案「此地存在无法无地图评估的守军」）—— 白跑一趟。
+        ///
+        /// 根因是**两张表分离**：`ThreatRosterFactory.SupportOf`（说"能抽象"）与
+        /// `ThreatRosterFactory.Build` 的 `switch (defName)`（真正有生成分支的）。
+        /// 旧代码给 `Build` 兜了个 `default: GenerateManhunters` ⇒ 漏一条会被**静默**当成"猎杀人类"；
+        /// 现在 `default` 改成 fail-closed（进 `Unresolved` + `Log.ErrorOnce`），
+        /// 这条自检则负责在**进游戏那一刻**就把"两张表对不上"点名出来
+        /// （`HandledThreatDefNames` 就是 `Build` 那半边表的声明）。
+        ///
+        /// 为什么是 Warning 不是 Error：第三方模组新加的 `SitePartDef` 默认落 `Unsupported`
+        /// （不进本检查）；只有**我们自己**把它写进 `SupportOf` 的 `Abstractable` 才会命中 ——
+        /// 那一定是漏改，但游戏本身仍然可玩（该点会如实报"缺抽象生成器"并中止交战段）。
+        /// </summary>
+        private static void CheckThreatGenerators()
+        {
+            List<SitePartDef> parts = DefDatabase<SitePartDef>.AllDefsListForReading;
+            if (parts == null)
+            {
+                return;
+            }
+            for (int i = 0; i < parts.Count; i++)
+            {
+                SitePartDef part = parts[i];
+                if (part == null || ThreatRosterFactory.SupportOf(part) != ThreatRosterFactory.RosterSupport.Abstractable)
+                {
+                    continue;
+                }
+                if (Array.IndexOf(ThreatRosterFactory.HandledThreatDefNames, part.defName) < 0)
+                {
+                    Log.Warning("[RimDelegation] 威胁件「" + part.defName + "」被 `SupportOf` 判为可抽象，" +
+                                "但 `ThreatRosterFactory.Build` 里没有对应生成分支 → 带它的点会在「交战」段" +
+                                "中止（玩家白跑一趟）。补一条 `case`，并把名字加进 `HandledThreatDefNames`。");
+                }
+            }
         }
 
         /// <summary>

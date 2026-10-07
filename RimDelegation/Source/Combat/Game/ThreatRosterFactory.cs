@@ -104,15 +104,65 @@ namespace RimDelegation.Combat
                 case "WorkSite_Mining":
                     return RosterSupport.Abstractable;
 
-                case "MechCluster":
+                // ★ 2026-10-07 用户报「报告此地存在无法抽象评估的威胁」⇒ 伏击改为可抽象。
+                //
+                // 反编译真值（rw16b / MVID 61e41735…，`.dsh-drop/research/out-outpost8.txt`）：
+                //   `GenStep_Ambush.MakeAmbushSignalAction`（`02002058:T`）
+                //     · points = parms.sitePart.parms.threatPoints        ← **存档里可读** ✅
+                //     · `int num = Rand.RangeInclusive(0, 2);`             ← 类型在地图生成那一刻掷
+                //         0 → Manhunters；1 且 CanGenerateAnyNormalGroup(Mechanoids, points) → Mechanoids；
+                //         else → Normal（map.ParentFaction 敌对就用它，否则 RandomEnemyFaction）
+                //     · 类型只写进地图上 spawn 的 `SignalAction_Ambush` Thing；`SitePartParams` 里
+                //       **没有任何 ambush 字段**（`ambushType` / `animalKind` 都不存档）⇒ 原版自己
+                //       也要等进图才知道要打的是野兽、机械族还是该派系人类。
+                //   ⇒ 旧判定 `ForbidAbstract`（"类型不可读 ⇒ 只能进图"）是对的但**对玩家是死路**：
+                //     矿点/物资点/难员的威胁池里它占 2/7，命中的点会在走到「交战」段时 Abort
+                //     （"派人跑了半天才被告知不能干"，RIM-22 §1.3-① 记过这一条）。
+                //
+                // 现在的口径（用户 2026-10-07 报 bug 后拍板方向：**把它接进抽象引擎**）：
+                //   **类型由本 mod 按站点自己的种子判定**（`part.parms.randomValue`，建点那一刻
+                //   `Rand.Int` 掷定并随存档 —— 与 RIM-25/27 的 `Turrets` 边缘守卫同一套"输入同源"做法），
+                //   掷法、分支、编制、点数全部逐字照抄原版，只把"未定"改成"本趟定"。
+                //   ⚠️ 这是**对原版行为的一处有意偏离**（原版把选择权留到进图）：
+                //      · 好处：预告与结算必然是同一份编队（"预告即契约" §19.12），且不再中途 Abort；
+                //      · 代价：玩家若选择"亲自进图清剿"，届时原版会**另外掷一次**类型，
+                //        可能与委派里打的那一批不同（两边本来就不可能逐人一致 —— 委派侧永远不进图）。
+                //   ⇒ 玩家可见处必须写明这是本趟判定的类型（见 `GenerateAmbush` 的 Notes），
+                //     代码侧的理由就在这里。
                 case "AmbushEdge":
                 case "AmbushHidden":
+                    return RosterSupport.Abstractable;
+
+                case "MechCluster":
+                case "MechClusterForceNoConditionCauser":
                     return RosterSupport.ForbidAbstract;
 
                 default:
                     return RosterSupport.Unsupported;
             }
         }
+
+        /// <summary>
+        /// 被判为 <see cref="RosterSupport.Abstractable" /> 的件里，<see cref="Build" /> **确实有生成器**的那些。
+        ///
+        /// 存在的唯一理由：`Build` 的 `switch (defName)` 与 `SupportOf` 是**两张表**，
+        /// 漏一条就会让"能评估"的点在交战段无声失败（RIM-22 §1.3-④ 点名的静默失败）。
+        /// `ModBoot` 拿它做启动自检：任何 `Abstractable` 却不在本表里的 defName 都会点名报警。
+        /// 加一条 `SupportOf` 的 `case` 就必须同时加这里的一条 —— 两张表由这条自检绑在一起。
+        /// </summary>
+        public static readonly string[] HandledThreatDefNames =
+        {
+            "Outpost",
+            "SleepingMechanoids",
+            "Manhunters",
+            "Turrets",
+            "WorkSite_Logging",
+            "WorkSite_Hunting",
+            "WorkSite_Farming",
+            "WorkSite_Mining",
+            "AmbushEdge",
+            "AmbushHidden",
+        };
 
         /// <summary>有威胁点的 SitePart 才算威胁部件（PreciousLump / ItemStash 主件的 wantsThreatPoints 是 false）。</summary>
         private static bool IsThreatPart(SitePart part)
@@ -175,9 +225,29 @@ namespace RimDelegation.Combat
                                 GenerateWorkSiteGuards(r, site, part);
                                 break;
 
+                            // ★ 2026-10-07：伏击（原版类型在地图生成时才掷，这里按站点种子判定）
+                            case "AmbushEdge":
+                            case "AmbushHidden":
+                                GenerateAmbush(r, site, part);
+                                break;
+
+                            case "Manhunters":
+                                GenerateManhunters(r, site, part);
+                                break;
+
                             default:
-                                // SupportOf 说它可抽象，而这里只有 Manhunters 这一条路可走
-                                GenerateManhunters(r, part);
+                                // RIM-22 §1.3-④：这里以前是 `GenerateManhunters`（"SupportOf 说它可抽象，
+                                // 而这里只有这一条路可走"）—— 那是一条**静默失败**：将来任何新增的
+                                // `Abstractable` 件若忘了加 `case`，会被无声地当成"猎杀人类"生成，
+                                // 玩家看到的是一份编造的编队。
+                                // 现在 fail-closed：进 `Unresolved` ⇒ `CanAssess = false` ⇒
+                                // 交战段**中止并说明**，同时 `Log.ErrorOnce` 点名。
+                                // `ModBoot` 还有一条启动自检（`CheckThreatGenerators`）会在进游戏时就喊出来
+                                //（`SupportOf` 与 `Build` 是两张表，靠那条自检绑定）。
+                                r.Unresolved.Add(part.def.LabelCap + "：缺抽象生成器（" + defName + "）");
+                                Log.ErrorOnce("[RimDelegation] ThreatRosterFactory.SupportOf 把「" + defName +
+                                              "」判为可抽象，但 Build 里没有对应生成分支（已按不可评估处理）",
+                                    0x5E0E3);
                                 break;
                         }
                         break;
@@ -518,45 +588,201 @@ namespace RimDelegation.Combat
                         "（原版 guardsCountRange = (1,1)；本 mod 按输入同源用种子 " + seed + "）");
         }
 
-        private static void GenerateManhunters(Result r, SitePart part)
+        /// <summary>
+        /// 猎杀人类（独立威胁件 `Manhunters`）。
+        ///
+        /// 种类：`parms.animalKind` 优先（原版 `SitePartWorker_Manhunters.GenerateDefaultParams`
+        /// 建点时就用 `ManhunterPackGenStepUtility.TryGetAnimalsKind(points, tile)` 掷好并存档）；
+        /// **没有**的话按原版 `GenStep_ManhunterPack` 的行为**按 tile 兜底重掷** ——
+        /// 旧写法在这里直接进 `Unresolved`（"站点未记录动物种类"）⇒ 一个威胁点会把整趟委派
+        /// 拖进"无法评估 ⇒ 中止"，属于 `SitePartWorker` 侧没存进去时的过度惩罚。
+        /// </summary>
+        private static void GenerateManhunters(Result r, Site site, SitePart part)
         {
             PawnKindDef kind = part.parms.animalKind;
             if (kind == null)
             {
-                r.Unresolved.Add("猎杀人类：站点未记录动物种类");
+                // ⚠️ 这条兜底查表**也要包种子**：`TryGetAnimalsKind` 内部是按 `AnimalWeight` 加权随机的
+                //    （走全局 `Rand`）⇒ 不包的话同一地点每次评估都会换一种野兽，且会吃掉世界随机流。
+                int fallbackSeed = part.parms.randomValue;
+                bool found;
+                Rand.PushState(fallbackSeed);
+                try
+                {
+                    found = ManhunterPackGenStepUtility.TryGetAnimalsKind(part.parms.threatPoints, site.Tile,
+                        out kind);
+                }
+                finally
+                {
+                    Rand.PopState();
+                }
+                if (!found)
+                {
+                    r.Unresolved.Add("猎杀人类：既没记录动物种类，也按地貌推不出可用的野兽");
+                    return;
+                }
+                r.Notes.Add("猎杀人类：站点没记录动物种类，已按原版 GenStep_ManhunterPack 的 tile 兜底推定为「" +
+                            kind.LabelCap + "」（种子 " + fallbackSeed + "）");
+            }
+
+            GenerateAnimalPack(r, site, part, kind, "猎杀人类");
+        }
+
+        /// <summary>
+        /// 伏击（`AmbushEdge` / `AmbushHidden`）—— 全流程照抄原版 `GenStep_Ambush*`，
+        /// 只把"类型到进图才掷"改成"本趟按站点种子掷"。
+        ///
+        /// 原版真值（`GenStep_Ambush.MakeAmbushSignalAction`，`02002058:T`；`SignalAction_Ambush`）：
+        /// ```csharp
+        /// signalAction.points = parms.sitePart.parms.threatPoints;
+        /// int num = Rand.RangeInclusive(0, 2);
+        /// if (num == 0)                                        ambushType = Manhunters;
+        /// else if (num == 1 &amp;&amp; CanGenerateAnyNormalGroup(Mechanoids, points))
+        ///                                                      ambushType = Mechanoids;
+        /// else                                                 ambushType = Normal;
+        /// ```
+        /// 触发那一刻（`SignalAction_Ambush.GenerateAmbushPawns`，`0600F489:M`）：
+        ///   · Manhunters：`TryFindAggressiveAnimalKind(points, map.Tile)`（失败退 `PlanetTile.Invalid`）
+        ///     → `GenerateAnimals(kind, map.Tile, points)`；
+        ///   · 其余：派系 = `map.ParentFaction`（敌对时）否则 `RandomEnemyFaction(false,false,false)`；
+        ///     机械族走 `Faction.OfMechanoids`；编制恒为 `PawnGroupKindDefOf.Combat`；
+        ///     点数 = `Mathf.Max(points, faction.def.MinPointsToGeneratePawnGroup(Combat))`。
+        ///
+        /// **本 mod 的偏离只有一处**：种子的来源。原版在**地图生成那一刻**用全局 `Rand` 掷，
+        /// 所以 `SitePartParams` 里没有 ambush 字段可读（已逐字段核对）；这里改用
+        /// `part.parms.randomValue`（建点那一刻 `Rand.Int` 掷定、随存档）+ `Rand.PushState`，
+        /// 于是：① 同一地点每次评估都得到**同一份**编队（"预告即契约" §19.12 的输入同源前提）；
+        /// ② 从 UI 反复调用**不吃**世界随机数流。掷法与分支逐字照抄，只是"什么时候掷"提前到了本趟。
+        /// 玩家可见处（Notes）必须写明这是本趟判定的类型（准则②"不可避免的近似要写在玩家可见处"）。
+        /// </summary>
+        private static void GenerateAmbush(Result r, Site site, SitePart part)
+        {
+            float points = part.parms.threatPoints;
+            if (points <= 0f)
+            {
+                r.Unresolved.Add("伏击：威胁点数为 0");
                 return;
             }
 
-            int n = AggressiveAnimalIncidentUtility.GetAnimalsCount(kind, part.parms.threatPoints);
-            int count = 0;
-
-            // ★ RIM-25(1A/2A)：这是**唯一**没有隔离随机数流的生成路径。
-            //   `PawnGenerator.GeneratePawn` 内部处处用 `Rand`（年龄 / 性别 / 健康 / 装备），
-            //   不包种子的两个后果（与 `GeneratePawnGroup` 里那段注释同源）：
-            //     ① 每打开一次威胁评估面板 / 主列就重掷一份名册 ⇒ 面板算的名册 ≠ 结算用的名册，
-            //        违背"预告即契约"（§19.12）的输入同源前提；
-            //     ② 从 UI（每帧缓存重建、对话框）调用会**吃掉世界随机数流**，之后的世界事件序列被静默推进。
-            //   种子取 `part.parms.randomValue`（拍板 2A）：反编译确认原版
-            //   `SitePartWorker.GenerateDefaultParams` 就是 `randomValue = Rand.Int`，
-            //   并由 `SitePartParams.ExposeData` 的 `Scribe_Values.Look(ref randomValue, "randomValue", 0)`
-            //   随存档 —— 建点那一刻掷定，是"与原版同源"的那颗种子（`site.ID` 虽稳定但与建点掷骰无关）。
-            //   3B：不在 `InspectWarning` 里写"野兽编队为推演值"。
             int seed = part.parms.randomValue;
             Rand.PushState(seed);
             try
             {
-                for (int i = 0; i < n; i++)
+                int roll = Rand.RangeInclusive(0, 2);
+                if (roll == 0)
                 {
-                    Pawn p = null;
-                    try { p = PawnGenerator.GeneratePawn(kind, null); }
-                    catch (Exception ex) { r.Notes.Add("猎杀人类：生成失败（" + ex.GetType().Name + "）"); break; }
+                    PawnKindDef kind = null;
+                    if (!AggressiveAnimalIncidentUtility.TryFindAggressiveAnimalKind(points, site.Tile, out kind)
+                        && !AggressiveAnimalIncidentUtility.TryFindAggressiveAnimalKind(
+                               points, PlanetTile.Invalid, out kind))
+                    {
+                        r.Unresolved.Add("伏击：按点数与地貌找不到可用的野兽，伏兵种类判不出来");
+                        return;
+                    }
+                    r.Notes.Add(AmbushTypeNote(part, seed, "野兽「" + kind.LabelCap + "」"));
+                    GenerateAnimalPack(r, site, part, kind, "伏击·野兽");
+                    return;
+                }
 
-                    if (p == null) continue;
+                Faction faction;
+                string who;
+                if (roll == 1 && PawnGroupMakerUtility.CanGenerateAnyNormalGroup(Faction.OfMechanoids, points))
+                {
+                    faction = Faction.OfMechanoids;
+                    who = "机械族";
+                }
+                else
+                {
+                    // 原版：`map.ParentFaction` 敌对就用它，否则随机一个敌对派系
+                    //（矿点的 site.Faction 恒为 null ⇒ 实际走随机那支，与进图一致）。
+                    faction = site.Faction != null && site.Faction.HostileTo(Faction.OfPlayer)
+                        ? site.Faction
+                        : Find.FactionManager.RandomEnemyFaction(allowHidden: false,
+                            allowDefeated: false, allowNonHumanlike: false);
+                    who = faction != null ? faction.Name : null;
+                }
+
+                if (faction == null)
+                {
+                    r.Unresolved.Add("伏击：找不到可用派系");
+                    return;
+                }
+
+                // 原版这一点数下限只加在"人类派系那支"；机械族那支原样传 points。
+                float usePoints = roll == 1
+                    ? points
+                    : Mathf.Max(points, faction.def.MinPointsToGeneratePawnGroup(PawnGroupKindDefOf.Combat));
+
+                r.Notes.Add(AmbushTypeNote(part, seed, who));
+                GeneratePawnGroup(r, site, part, PawnGroupKindDefOf.Combat, faction, inhabitants: false,
+                                  seed: seed, label: "伏击·" + who, points: usePoints);
+            }
+            finally
+            {
+                Rand.PopState();
+            }
+        }
+
+        /// <summary>伏击的"类型是本趟判定的"那一行说明（玩家可见 ⇒ 写清近似，准则②）。</summary>
+        private static string AmbushTypeNote(SitePart part, int seed, string who)
+        {
+            return "伏击（" + part.def.LabelCap + "）：伏兵的种类要到踏进那片地图时才定得下来，" +
+                   "本趟按站点种子 " + seed + " 判定为「" + who + "」，并用同一份编队做预告与结算；" +
+                   "本模型不再额外计「被偷袭」的折扣（守军的地形优势已含这一层）";
+        }
+
+        /// <summary>
+        /// 一批野兽（猎杀人类 / 伏击的野兽那支）—— 生成路径逐字照抄原版
+        /// `AggressiveAnimalIncidentUtility.GenerateAnimals(kind, tile, points)`：
+        /// 数量 = `GetAnimalsCount`（`Clamp(round(points / kind.combatPower), 2, 100)`）、
+        /// 每只走 `PawnGenerator.GeneratePawn(new PawnGenerationRequest(kind, null, NonPlayer, **tile**))`。
+        ///
+        /// ⚠️ 2026-10-07 起这里带上 `site.Tile`（旧写法 `PawnGenerator.GeneratePawn(kind, null)`
+        /// 没传 tile，而原版传 `map.Tile`）—— 涉及地貌的生成细节（Odyssey 栖息地动物、污染动物、
+        /// 异种）从此与原版同源；顺手把两条"野兽"路径（威胁件与伏击）收敛成同一份代码。
+        /// </summary>
+        private static void GenerateAnimalPack(Result r, Site site, SitePart part, PawnKindDef kind, string label)
+        {
+            float points = part.parms.threatPoints;
+            int seed = part.parms.randomValue;
+
+            // ⚠️ 种子必须**包住"生成"这一步本身**（`GenerateAnimals` 内部逐只走 `PawnGenerator`，
+            //    里面处处用 `Rand`：年龄 / 性别 / 健康 / 装备）。旧写法（`PawnGenerator.GeneratePawn(kind, null)`）
+            //    把这颗种子只包在快照折算那一段上，等于生成用的是世界随机流 ⇒ 两个后果：
+            //      ① 每打开一次威胁评估面板/主列就重掷一份名册，面板算的名册 ≠ 结算用的名册；
+            //      ② 从 UI 调用会**吃掉世界随机数流**（与 RIM-25(1A/2A) 修掉的坑同类）。
+            Rand.PushState(seed);
+            int count = 0;
+            try
+            {
+                List<Pawn> animals;
+                try
+                {
+                    animals = AggressiveAnimalIncidentUtility.GenerateAnimals(kind, site.Tile, points);
+                }
+                catch (Exception ex)
+                {
+                    r.Notes.Add(label + "：生成失败（" + ex.GetType().Name + "）");
+                    return;
+                }
+                if (animals.NullOrEmpty())
+                {
+                    r.Unresolved.Add(label + "：生成不出可用野兽");
+                    return;
+                }
+
+                for (int i = 0; i < animals.Count; i++)
+                {
+                    Pawn p = animals[i];
+                    if (p == null)
+                    {
+                        continue;
+                    }
                     string problem;
                     CombatUnitSnapshot snap = CombatSnapshotFactory.FromPawn(p, false, out problem);
                     if (snap != null)
                     {
-                        snap.HasTerrainAdvantage = false;
+                        snap.HasTerrainAdvantage = false;   // 野兽没有工事
                         // ★ 下标必须取**全局**的 `r.Enemies.Count`，不能用从 0 起的局部计数器：
                         //   同一地点可能有第二个威胁部件 ⇒ 否则缴获会记到错误的敌人头上，
                         //   被覆盖的那只真 pawn 还会逃过收尾销毁（永久泄漏）。
@@ -569,6 +795,10 @@ namespace RimDelegation.Combat
                         }
                         count++;
                     }
+                    else if (problem != null)
+                    {
+                        r.Notes.Add(problem);
+                    }
                     if (!r.keepPawns)
                     {
                         Discard(p);
@@ -580,8 +810,8 @@ namespace RimDelegation.Combat
                 Rand.PopState();
             }
 
-            r.Notes.Add("猎杀人类：" + kind.LabelCap + " × " + count +
-                        "（威胁点数 " + part.parms.threatPoints.ToString("0") + "，种子 " + seed + "）");
+            r.Notes.Add(label + "：" + kind.LabelCap + " × " + count +
+                        "（威胁点数 " + points.ToString("0") + "，种子 " + seed + "）");
         }
 
         /// <summary>

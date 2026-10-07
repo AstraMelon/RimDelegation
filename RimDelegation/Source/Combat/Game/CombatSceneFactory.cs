@@ -76,7 +76,12 @@ namespace RimDelegation.Combat
         {
             if (Scene == null) return "无法构建战场";
             if (Scene.CountMine() == 0) return "远行队里没有可战斗的成员";
-            if (Unresolved.Count > 0) return "此地存在无法抽象评估的威胁（需进入地图清剿）";
+            // 2026-10-07：这句以前只有一句通用话（"此地存在无法抽象评估的威胁（需进入地图清剿）"），
+            // 而它被三处调用点各自再加一层前缀 ⇒ 玩家看到的是一模一样的两句话叠在一起
+            // （「此地存在无法无地图评估的守军（需进入地图清剿）：此地存在无法抽象评估的威胁（需进入地图清剿）」）。
+            // 现在这里给出**具体是哪几件推演不了**，调用方一律不再加前缀/后缀。
+            if (Unresolved.Count > 0)
+                return "此地有守军没法在图上推演（需进入地图清剿）：" + string.Join("、", Unresolved);
             if (Scene.CountEnemies() == 0) return "没能推算出敌方编队";
             return null;
         }

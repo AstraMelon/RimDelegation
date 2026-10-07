@@ -1840,6 +1840,13 @@ namespace RimDelegationRadiusUI
         ///   实测两栏都只剩图钉、开关那一格是纯背景（IL 里按钮确实在画，见 RIM-6 议题的反汇编表）。
         ///   ⇒ 改法（与图钉同源）：**底色 + 悬停 + 自绘几何字形 + `Widgets.ButtonInvisible`**，
         ///   彻底不依赖字体覆盖；同时把这一组整体按 `BtnGap` 内收，不再让右边缘压在列边界（`col.xMax`）上。
+        ///
+        /// ⚠️ RIM-6 回归（2026-10-07，用户报「PIN按钮和折叠收起按钮重叠了」）：
+        ///   上面那次改动把"整组内收"写成 `float btnX = …; 图钉画在 btnX 左边; **然后** btnX -= …;
+        ///   折叠开关画在 btnX` ⇒ 折叠开关的矩形与图钉的矩形**逐像素相同**（都是 `btnX - PinBtnW - BtnGap`），
+        ///   18×18 的圆角底把 22×22 的图钉盖掉一半（图钉先画）。
+        ///   ⇒ 现在两颗按钮各用各的变量：**先算折叠开关位（贴列右边）**，图钉位由它往左退一格，
+        ///     中途不再改写任何 x（"先算位置、再画"而不是"边画边改"）。
         /// </summary>
         private static void DrawColumnToggle(Rect head, Rect col, string label, ref bool collapsed, ref bool pinned)
         {
@@ -1848,11 +1855,13 @@ namespace RimDelegationRadiusUI
 
             // RIM-6：整组内收 —— 旧版 `col.xMax - 24` + 宽 22 ⇒ 右边缘落在 `col.xMax - 2`，
             // 贴边太紧；现在多留 `BtnGap`，且按钮改成 18×18 的方块，整组更紧凑也更好点。
-            float btnX = col.xMax - BtnGap - ColBtnW;
+            float collapseX = col.xMax - BtnGap - ColBtnW;
+            float top = head.y + (ColHeadH - ColBtnW) * 0.5f;
+
             if (roomForPin)
             {
-                Rect pinRect = new Rect(btnX - PinBtnW - BtnGap, head.y + (ColHeadH - ColBtnW) * 0.5f,
-                    PinBtnW, ColBtnW);
+                // 图钉在折叠开关**左边**（S34 用户原话：「上面折叠展开的+-号按钮左边添加一个图钉PIN按钮」）
+                Rect pinRect = new Rect(collapseX - BtnGap - PinBtnW, top, PinBtnW, ColBtnW);
                 if (DrawPinToggle(pinRect, label, pinned))
                 {
                     pinned = !pinned;
@@ -1861,11 +1870,9 @@ namespace RimDelegationRadiusUI
                         collapsed = false;   // 钉住 = 固定展开，顺手把它展开
                     }
                 }
-                btnX -= PinBtnW + BtnGap;
             }
 
-            if (DrawCollapseToggle(new Rect(btnX, head.y + (ColHeadH - ColBtnW) * 0.5f, ColBtnW, ColBtnW),
-                    label, strip, pinned))
+            if (DrawCollapseToggle(new Rect(collapseX, top, ColBtnW, ColBtnW), label, strip, pinned))
             {
                 if (strip)
                 {
@@ -1891,8 +1898,13 @@ namespace RimDelegationRadiusUI
         /// 折叠开关（RIM-6 起的画法）：底 + 悬停 + **自绘几何字形** + 收点击。
         ///
         /// 字形为什么自己画、不用 `RadiusIcon`：框架的图标集里**没有加减号**
-        /// （`Textures/RadiusUI/Action/` 只有 `DevPlus`/`ChevronDown`/`Strip` 等，已逐张看过），
-        /// 而 `＋/－` 这两个字形正是 RIM-6 的嫌疑点 —— 自绘两根 2px 的线最直接也最可控。
+        /// （`Textures/RadiusUI/Action/` 只有 `DevPlus`/`ChevronDown`/`Strip` 等，已逐张看过）。
+        ///
+        /// ⚠️ 2026-10-07 补齐：RIM-6 的注释当时就写着"自绘两根 2px 的线"，但代码里其实还留着
+        ///   `RadiusFont.LabelAt("－"/"＋")`（全角字形）—— 也就是**仍然押在字形上**，
+        ///   只是多了个 `CardChrome.Rounded` 底兜住"按钮整体不可见"那一半风险。
+        ///   现在真按注释自绘（`Widgets.DrawBoxSolid`，两根线，`＋` = 横 + 竖）：零字体依赖、
+        ///   与图钉（矢量图标）同源，四条列头的开关在任意字号/字体覆盖下都长得一样。
         /// </summary>
         private static bool DrawCollapseToggle(Rect r, string label, bool strip, bool pinned)
         {
@@ -1902,8 +1914,15 @@ namespace RimDelegationRadiusUI
             {
                 CardChrome.Hover(r, 6f);
             }
-            RadiusFont.LabelAt(r, strip ? "＋" : "－", RadiusFont.Scale.Section,
-                hover ? Palette.Ink : Palette.TextDim, TextAnchor.MiddleCenter, false, false);
+            Color glyph = hover ? Palette.Ink : Palette.TextDim;
+            float arm = 10f;   // 横/竖线长度（18×18 的方块里四边各留 4px）
+            float th = 2f;     // 线宽
+            Widgets.DrawBoxSolid(new Rect(r.center.x - arm * 0.5f, r.center.y - th * 0.5f, arm, th), glyph);
+            if (strip)
+            {
+                // 收起态 ⇒ 这颗按钮的动作是"展开"⇒ 画 ＋
+                Widgets.DrawBoxSolid(new Rect(r.center.x - th * 0.5f, r.center.y - arm * 0.5f, th, arm), glyph);
+            }
             TooltipHandler.TipRegion(r, strip
                 ? "展开" + label
                 : (pinned ? "收起" + label + "（同时取消固定）" : "收起" + label));
@@ -2121,25 +2140,30 @@ namespace RimDelegationRadiusUI
 
         /// <summary>主列的唯一一份布局（`cursor.draw == false` 时只量高）。</summary>
         /// <summary>
-        /// S27：三段的**底框 + 大标题**（用户：「'作战任务'和'收集任务'，'远行队信息'增大字号，
+        /// S27：三段的**底框**（用户：「'作战任务'和'收集任务'，'远行队信息'增大字号，
         /// 他们是否可以像右边的概览一样，添加底框」）。
         ///
-        /// 用与右栏「概览/位置/导航」**完全相同的卡片**（`CardChrome.Card` + `RadiusFont.Scale.Section`），
-        /// 所以观感天然一致。⚠️ 底框必须先画、内容后画（S22 的教训：反了内容会被盖住），
+        /// 用与右栏「概览/位置/导航」**完全相同的卡片**（`CardChrome.Card`），所以观感天然一致。
+        /// ⚠️ 底框必须先画、内容后画（S22 的教训：反了内容会被盖住），
         /// 但段高只能在画完内容后才知道 ⇒ 高度在**量高趟**记到静态字段里、绘制趟开头铺底
         /// （第一帧画不出来是正常的，下一帧就有了）。
+        ///
+        /// ⚠️ **RIM-7（2026-10-07，用户报「作战任务 / 收集任务 / 远行队信息 字体模糊」）**：
+        ///   本方法曾经**连带把段标题也画一遍**（`card.y + 4`、灰 `InkMid`），而
+        ///   <see cref="SectionCollapsible" /> 自己早就在 `top + 2`、白 `Ink` 画过同一句话
+        ///   ⇒ 同一块区域**每帧被两段代码各画一次，纵向差 2px、颜色还不同**。
+        ///   两遍叠加就是"发虚/重影"的真身（右栏卡标题只画一遍 ⇒ 一直是锐利的，这是最强旁证）。
+        ///   ⇒ 标题的**唯一来源改成 `SectionCollapsible`**（它永在、第一帧就有，且是本文件里
+        ///     唯一知道"当前是展开还是收起"的地方）；本方法退化为**只铺底框**。
+        ///   不要再往这里加回文字 —— 那正是 RIM-7 的成因。
         /// </summary>
-        private static void SectionChrome(Cursor c, float top, float height, string title)
+        private static void SectionChrome(Cursor c, float top, float height)
         {
             if (!c.draw || height <= 1f)
             {
                 return;
             }
-            Rect card = new Rect(c.view.x, top, c.w, height);
-            CardChrome.Card(card, false);
-            RadiusFont.LabelAt(new Rect(card.x + 8f, card.y + 4f, Mathf.Max(60f, card.width - 40f),
-                    Mathf.Max(20f, UIKit.Flat.SectionHeaderH)),
-                title, RadiusFont.Scale.Section, Palette.Flat.InkMid, TextAnchor.MiddleLeft, true, false);
+            CardChrome.Card(new Rect(c.view.x, top, c.w, height), false);
         }
 
         /// <summary>三段在**量高趟**记下的高度（绘制趟拿它铺底框）。</summary>
@@ -2157,6 +2181,11 @@ namespace RimDelegationRadiusUI
         ///
         /// ⚠️ 开关画在**段头自己身上**，而段头永远在；收起时还要单独画一张"只剩卡头"的底框 ——
         /// 否则标题会跟着内容一起消失，又变成"收起来就再也找不到"的那个老坑（S22 用户报过两次）。
+        ///
+        /// ⚠️ **RIM-7**：段标题**只在本方法里画一次**（展开态画在裸底上、收起态画在自己补的卡上），
+        ///   <see cref="SectionChrome" /> 只负责铺展开态的底框、**不再画字**。
+        ///   展开态由本方法先画字、`SectionChrome` 的卡**在同一帧更早**已经铺好（调用顺序见 `MainPass`）
+        ///   ⇒ 字永远压在卡上，第一帧也不会缺字。
         /// </summary>
         private static bool SectionCollapsible(Cursor c, string label, DelegationUIUtility.SectionId id)
         {
@@ -2165,16 +2194,20 @@ namespace RimDelegationRadiusUI
             bool collapsed = DelegationUIUtility.SectionCollapsed(id);
             if (c.draw)
             {
-                // 标题**永远**要画（S27：字号提到与「概览」卡片同档）。
-                // 展开态的底框由 SectionChrome 在量高趟之后铺（第一帧没有底框是正常的）。
-                RadiusFont.LabelAt(new Rect(c.view.x + 8f, top + 2f, Mathf.Max(60f, c.w - 40f), h),
-                    label, RadiusFont.Scale.Section, Palette.Flat.Ink, TextAnchor.MiddleLeft, true, false);
+                // 标题**永远**要画（S27：字号提到与「概览」卡片同档），且**只画这一份**。
+                // 展开态的底框由 SectionChrome 在量高趟之后铺（第一帧没有底框是正常的，但字一直在）。
                 if (collapsed)
                 {
+                    // 收起态：自己补一张"只剩卡头"的底框，字画在卡上（卡在字之前 ⇒ 不会被盖住）
                     Rect card = new Rect(c.view.x, top, c.w, h + 8f);
                     CardChrome.Card(card, false);
-                    RadiusFont.LabelAt(new Rect(card.x + 8f, card.y + 4f, Mathf.Max(60f, card.width - 40f), h),
-                        label, RadiusFont.Scale.Section, Palette.Flat.InkMid, TextAnchor.MiddleLeft, true, false);
+                    RadiusFont.LabelAt(new Rect(card.x + 8f, top + 4f, Mathf.Max(60f, card.width - 40f), h),
+                        label, RadiusFont.Scale.Section, Palette.Flat.Ink, TextAnchor.MiddleLeft, true, false);
+                }
+                else
+                {
+                    RadiusFont.LabelAt(new Rect(c.view.x + 8f, top + 2f, Mathf.Max(60f, c.w - 40f), h),
+                        label, RadiusFont.Scale.Section, Palette.Flat.Ink, TextAnchor.MiddleLeft, true, false);
                 }
                 if (UIKit.Button(new Rect(c.view.x + c.w - 22f, top + 4f, 22f, Mathf.Max(18f, h - 4f)),
                         collapsed ? "＋" : "－", ButtonStyle.Ghost, true,
@@ -2213,7 +2246,7 @@ namespace RimDelegationRadiusUI
             float secCombatTop = c.y;
             if (c.draw && !DelegationUIUtility.SectionCollapsed(DelegationUIUtility.SectionId.Combat))
             {
-                SectionChrome(c, secCombatTop, secCombatH, DelegationUIUtility.SectionCombat);
+                SectionChrome(c, secCombatTop, secCombatH);
             }
             bool showCombat = SectionCollapsible(c, DelegationUIUtility.SectionCombat,
                 DelegationUIUtility.SectionId.Combat);
@@ -2344,7 +2377,7 @@ namespace RimDelegationRadiusUI
             float secCollectTop = c.y;
             if (c.draw && !DelegationUIUtility.SectionCollapsed(DelegationUIUtility.SectionId.Collect))
             {
-                SectionChrome(c, secCollectTop, secCollectH, DelegationUIUtility.SectionCollect);
+                SectionChrome(c, secCollectTop, secCollectH);
             }
 
             // ---- ② 收集任务（作业模式 → 进度 → 现场物资）
@@ -2502,7 +2535,7 @@ namespace RimDelegationRadiusUI
             float secCaravanTop = c.y;
             if (c.draw && !DelegationUIUtility.SectionCollapsed(DelegationUIUtility.SectionId.Caravan))
             {
-                SectionChrome(c, secCaravanTop, secCaravanH, DelegationUIUtility.SectionCaravan);
+                SectionChrome(c, secCaravanTop, secCaravanH);
             }
 
             // ---- ③ 远行队信息（S24；S27 起参与者归「收集任务」）

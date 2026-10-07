@@ -487,7 +487,8 @@ namespace RimDelegation
             if (!setup.CanAssess)
             {
                 d.workerStage = StageAssaultLost;
-                d.workerAbortReason = "此地存在无法无地图评估的守军（需进入地图清剿）：" + setup.BlockReason();
+                // 2026-10-07：与交战段同源 —— 中止原因只取 `BlockReason()`（它自带具体件名，不再重复一遍）
+                d.workerAbortReason = setup.BlockReason();
                 setup.DestroyUnusedPawns();   // S31：保留的真 pawn 必须收尾
                 return;
             }

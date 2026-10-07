@@ -366,8 +366,10 @@ namespace RimDelegation
                 keepPawns: true, ourRoster: d.participants);
             if (!setup.CanAssess)
             {
-                // 抽象模型兜不住（例如 Mechanoid 集群）：不装作打赢，也不静默通过 —— 直接中止
-                d.flowAbortReason = "此地存在无法无地图评估的守军（需进入地图清剿）：" + setup.BlockReason();
+                // 抽象模型兜不住（例如 Mechanoid 集群）：不装作打赢，也不静默通过 —— 直接中止。
+                // 2026-10-07：中止原因**只**用 `BlockReason()` 这一句（它现在自带具体件名），
+                // 不再在外面叠一层"此地存在无法无地图评估的守军……"的同义前缀（旧文案会自我重复一遍）。
+                d.flowAbortReason = setup.BlockReason();
                 setup.DestroyUnusedPawns();
                 return "战斗无法在这套模型里推演，队伍原地待命。";
             }
