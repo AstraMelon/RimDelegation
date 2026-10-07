@@ -276,6 +276,31 @@ namespace RimDelegation.Combat
             }
 
             float pointsUsed = points < 0f ? part.parms.threatPoints : points;
+
+            // ★ 点数兜底（**唯一来源**，所有调用方共享）：`FactionDef.MinPointsToGeneratePawnGroup`
+            //   其实是"最便宜的选项成本"——它按 100000 点预算算
+            //  （`PawnGroupKindWorker_Normal.MinPointsToGenerateAnything` 里 `parms == null ⇒ num = 100000f`），
+            //   **不反映 `FactionDef.maxPawnCostPerTotalPointsCurve` 在该点数下的封顶**
+            //  （`MaxPawnCost` 取 `curve(totalPoints)` 与若干下界的较大值）⇒ 它并不保证真能生成。
+            //   这里用原版自己的判据 `CanGenerateAnyNormalGroup` 当预言机，把点数抬到"真能出人"的最小档，
+            //   免得 `PawnGroupMakerUtility.GeneratePawns` **静默产出 0 人**（它只打一行 Log.Error，不抛异常）。
+            if (groupKind == PawnGroupKindDefOf.Combat &&
+                !PawnGroupMakerUtility.CanGenerateAnyNormalGroup(faction, pointsUsed))
+            {
+                float need = SmallestGeneratablePoints(faction, pointsUsed);
+                if (need < 0f)
+                {
+                    r.Unresolved.Add(label + "：派系「" + faction.Name + "」没有可用的战斗编制");
+                    return;
+                }
+                if (need > pointsUsed)
+                {
+                    r.Notes.Add(label + "：该派系在 " + pointsUsed.ToString("0") +
+                                " 点下凑不出编制，按它最小能拉出的一队（" + need.ToString("0") + " 点）判");
+                    pointsUsed = need;
+                }
+            }
+
             PawnGroupMakerParms parms = new PawnGroupMakerParms
             {
                 tile = site.Tile,
@@ -348,8 +373,73 @@ namespace RimDelegation.Combat
                 }
             }
 
+            if (count == 0)
+            {
+                // 静默失败必须喊出来（准则④）：原版 `GeneratePawns` 在"这个派系/点数凑不出编制"时
+                // 只打一行 Log.Error 然后**产出 0 人**（不抛异常），旧代码于是把空名册交给上层 ⇒
+                // 玩家看到的是「没能推算出敌方编队」这种说不清原因的中止（2026-10-07 实机验收即此形态）。
+                r.Unresolved.Add(label + "：没能按这套编制造出守军（派系「" + faction.Name +
+                                 "」· 威胁点数 " + pointsUsed.ToString("0") + "）");
+            }
+
             r.Notes.Add(label + "：威胁点数 " + pointsUsed.ToString("0") +
                         "（种子 " + seed + "）→ " + count + " 个可评估单位");
+        }
+
+        /// <summary>
+        /// `faction` 在"≥ <paramref name="points" /> 的某个点数"下**真能**拉出一队 Combat 编制时，
+        /// 返回那个**最小**点数；**永远**拉不出来（例：它一条 Combat 编制都没有）时返回 -1。
+        ///
+        /// 为什么需要它（2026-10-07 实机验收的根因之一）：
+        /// `FactionDef.MinPointsToGeneratePawnGroup(kind)` 返回的是"最便宜的选项成本"，它用
+        /// 100000 点预算算（`PawnGroupKindWorker_Normal.MinPointsToGenerateAnything` 里
+        /// `parms == null ⇒ num = 100000f`）⇒ **不反映 `maxPawnCostPerTotalPointsCurve` 在该点数下的封顶**
+        /// （`MaxPawnCost` 取 `curve(totalPoints)`、`MinPoints * 1.2`、raid strategy 下界三者的最大值）。
+        /// 于是"最低点数说 40、28 点下真一个都编不出"这种组合可能存在 —— 原版到那一步只会
+        /// `Log.Error` 然后产出 0 人。
+        ///
+        /// 这里不发明公式，而是拿**原版自己的判据** `PawnGroupMakerUtility.CanGenerateAnyNormalGroup`
+        /// 当预言机：先倍增找上界、再二分到 1 点精度。它是**纯查询**（内部只有 `CanGenerateFrom`
+        /// 的纯判定，不掷随机数），所以在 `Rand.PushState` 里反复调用也不会扰动随机流。
+        /// </summary>
+        private static float SmallestGeneratablePoints(Faction faction, float points)
+        {
+            if (faction?.def == null || !HasGroupMaker(faction, PawnGroupKindDefOf.Combat))
+            {
+                return -1f;
+            }
+
+            float lo = Mathf.Max(1f, points);
+            if (PawnGroupMakerUtility.CanGenerateAnyNormalGroup(faction, lo))
+            {
+                return lo;
+            }
+
+            float hi = lo * 2f;
+            for (int i = 0; i < 16 && hi < 20000f &&
+                            !PawnGroupMakerUtility.CanGenerateAnyNormalGroup(faction, hi); i++)
+            {
+                hi *= 2f;
+            }
+            if (!PawnGroupMakerUtility.CanGenerateAnyNormalGroup(faction, hi))
+            {
+                return -1f;
+            }
+
+            // 不变量：`hi` 始终是"已知可行"的点数 ⇒ 循环结束后返回的 hi 一定是可行解
+            for (int i = 0; i < 24; i++)
+            {
+                float mid = (lo + hi) * 0.5f;
+                if (PawnGroupMakerUtility.CanGenerateAnyNormalGroup(faction, mid))
+                {
+                    hi = mid;
+                }
+                else
+                {
+                    lo = mid;
+                }
+            }
+            return hi;
         }
 
         /// <summary>
@@ -684,9 +774,17 @@ namespace RimDelegation.Combat
                     return;
                 }
 
+                // 保存"最终实际走了机械族分支"，不能只看 roll：roll=1 但机械族编制不可用时，
+                // 原版会落入 Normal（普通派系）分支；该分支仍须补到派系 Combat 编制的最低点数。
+                // 2026-10-07 验收实证：Neanderthal `TribeRoughNeanderthal` 被随机选中后，日志报
+                // no usable PawnGroupMakers、parms.points=28。根因正是旧代码用 `roll == 1` 判断点数口径：
+                // roll=1 + mech 不可用 ⇒ 实际 faction=洛波曼（普通派系），却错误地仍传原始 28 点。
+                bool useMechanoidGroup = roll == 1 &&
+                    PawnGroupMakerUtility.CanGenerateAnyNormalGroup(Faction.OfMechanoids, points);
                 Faction faction;
                 string who;
-                if (roll == 1 && PawnGroupMakerUtility.CanGenerateAnyNormalGroup(Faction.OfMechanoids, points))
+                bool hostileSiteFaction = site.Faction != null && site.Faction.HostileTo(Faction.OfPlayer);
+                if (useMechanoidGroup)
                 {
                     faction = Faction.OfMechanoids;
                     who = "机械族";
@@ -695,7 +793,7 @@ namespace RimDelegation.Combat
                 {
                     // 原版：`map.ParentFaction` 敌对就用它，否则随机一个敌对派系
                     //（矿点的 site.Faction 恒为 null ⇒ 实际走随机那支，与进图一致）。
-                    faction = site.Faction != null && site.Faction.HostileTo(Faction.OfPlayer)
+                    faction = hostileSiteFaction
                         ? site.Faction
                         : Find.FactionManager.RandomEnemyFaction(allowHidden: false,
                             allowDefeated: false, allowNonHumanlike: false);
@@ -708,10 +806,42 @@ namespace RimDelegation.Combat
                     return;
                 }
 
-                // 原版这一点数下限只加在"人类派系那支"；机械族那支原样传 points。
-                float usePoints = roll == 1
+                // ★ 根因（2026-10-07 实机验收，用户贴的堆栈）：
+                //   点数口径必须看**最终分支**，不能看原始 `roll`。旧写法是 `roll == 1 ? points : max(...)`，
+                //   而 roll==1 但机械族编制不可用时会**回落到普通派系**，却仍按机械族口径传原始点数。
+                //   实证（rimsearcher + 反编译）：`TribeRoughNeanderthal` 的 Combat 编制最低 **40** 点
+                //   （最便宜的 `Tribal_Penitent` 战力 40），旧代码却传了 **28** ⇒
+                //   `PawnGroupMaker.CanGenerateFrom` 判点数不够 ⇒ `PawnGroupMakerUtility.GeneratePawns`
+                //   **只打一行 Log.Error 然后产出 0 人**（不抛异常）⇒ 名册为空 ⇒ 委派以
+                //   「没能推算出敌方编队」中止（玩家白跑一趟，而且原因是静默的）。
+                float usePoints = useMechanoidGroup
                     ? points
                     : Mathf.Max(points, faction.def.MinPointsToGeneratePawnGroup(PawnGroupKindDefOf.Combat));
+
+                // 兜底（与点数无关）：这个派系是不是**根本**拉不出战斗编制（例：它一条 Combat 编制都没有）。
+                // 只有"随机敌对派系"那一支能换人；站点自己指定的敌对派系不能换（换了等于换了守军的国籍）。
+                if (!useMechanoidGroup && SmallestGeneratablePoints(faction, 1f) < 0f)
+                {
+                    if (hostileSiteFaction)
+                    {
+                        r.Unresolved.Add("伏击：「" + faction.Name + "」没有可用的战斗编制");
+                        return;
+                    }
+                    Faction fallback;
+                    if (!PawnGroupMakerUtility.TryGetRandomFactionForCombatPawnGroup(points, out fallback,
+                            allowNonHostileToPlayer: false, allowHidden: false, allowDefeated: false,
+                            allowNonHumanlike: false) || fallback == null)
+                    {
+                        r.Unresolved.Add("伏击：附近没有能凑出伏兵的派系");
+                        return;
+                    }
+                    r.Notes.Add("伏击：原先抽到的「" + faction.Name + "」凑不出伏兵，改用「" +
+                                fallback.Name + "」的战斗编制");
+                    faction = fallback;
+                    who = faction.Name;
+                    usePoints = Mathf.Max(points,
+                        faction.def.MinPointsToGeneratePawnGroup(PawnGroupKindDefOf.Combat));
+                }
 
                 r.Notes.Add(AmbushTypeNote(part, seed, who));
                 GeneratePawnGroup(r, site, part, PawnGroupKindDefOf.Combat, faction, inhabitants: false,
